@@ -261,7 +261,4 @@ class PylontechCANBattery:
 
         elif can_id == 0x35E:
             # Manufacturer Name: "PYLON  "
-            logger.info(F"ID: 0x35E ", end="")
-            for i in range(len(can_buffer)):
-                logger.info(chr(can_buffer[i]), end="")
-            logger.info("")
+            logger.info(F"ID: 0x35E {[ chr(can_buffer[i]) for i in range(len(can_buffer)) ]}")

@@ -30,7 +30,6 @@ class MqttInterface:
 
         self.__charge_discharge_topic = f"{self.prefix}/charge_discharge_request"
         self.__status_topic = f"{self.prefix}/status"
-        self.__heartbeat_topic = f"{self.prefix}/heartbeat"
 
     # Define callback functions for connecting, publishing, and receiving messages
     def on_connect(self, client, userdata, flags, rc):
@@ -38,7 +37,6 @@ class MqttInterface:
         # Subscribe to a topic
         client.subscribe(self.__charge_discharge_topic)
         client.subscribe(self.__status_topic)
-        client.subscribe(self.__heartbeat_topic)
 
         client.will_set(self.__status_topic, payload=None, qos=0, retain=True)
 
@@ -48,10 +46,7 @@ class MqttInterface:
     def on_message(self, client, userdata, msg):
         print(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
 
-        if msg.topic == f"{self.prefix}/heartbeat":
-            if self.on_heartbeat != None:
-                self.on_heartbeat()
-        elif msg.topic == f"{self.prefix}/charge_discharge_request":
+        if msg.topic == f"{self.prefix}/charge_discharge_request":
             if self.on_power_request != None:
                 try:
                     self.on_power_request(int(msg.payload.decode()))
@@ -59,6 +54,8 @@ class MqttInterface:
                     logger.error("Could not process received charge/discharge instruction")
                 except:
                     logger.exception("Invalid charge/discharge instruction")
+            if self.on_heartbeat != None:
+                self.on_heartbeat()
 
     def broadcast_status(self, status):
         self.__client.publish(f"{self.prefix}/status", json.dumps(status, cls=SetEncoder))
