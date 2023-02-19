@@ -41,6 +41,7 @@ class PylontechCANBattery:
         self.__batt_T = None
 
         self.__batt_charge_V = None
+        self.__batt_discharge_V = None
         self.__batt_charge_A = None
         self.__batt_discharge_A = None
 
@@ -73,7 +74,10 @@ class PylontechCANBattery:
 
     def get_batt_charge_V(self):
         return self.__batt_charge_V
-
+    
+    def get_batt_discharge_V(self):
+        return self.__batt_discharge_V
+    
     def get_batt_charge_A(self):
         return self.__batt_charge_A
 
@@ -156,6 +160,11 @@ class PylontechCANBattery:
             if val_signed > 0x7FFF:
                 val_signed -= 0x10000
             self.__batt_discharge_A = val_signed / 10
+
+            val_signed = (can_buffer[7] << 8) + can_buffer[6]
+            if val_signed > 0x7FFF:
+                val_signed -= 0x10000
+            self.__batt_discharge_V = val_signed / 10
 
             logger.info(f"Charge Voltage={self.__batt_charge_V}V, Charge Current={self.__batt_charge_A}A, Discharge Current={self.__batt_discharge_A}A")
 

@@ -67,7 +67,7 @@ while True:
 
     power_request_W = mqtt_requested_power_W or 0
 
-    if (time.time() - last_heartbeat_timestamp) > config.mqtt_heartbeat_interval_s:
+    if (config.mqtt_heartbeat_interval_s != 0 and time.time() - last_heartbeat_timestamp) > config.mqtt_heartbeat_interval_s:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_MQTT_HEARTBEAT)
 
@@ -76,6 +76,8 @@ while True:
     batt_T = battery.get_batt_T()
 
     batt_charge_V = battery.get_batt_charge_V()
+    batt_discharge_V = battery.get_batt_discharge_V()
+
     batt_charge_A = battery.get_batt_charge_A()
     batt_discharge_A = battery.get_batt_discharge_A()
 
@@ -141,7 +143,7 @@ while True:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.INVERTER_FAULT_SET)
 
-    charger_inverter.set_battery_voltage_limits((config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
+    charger_inverter.set_battery_voltage_limits((batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
     charger_inverter.request_charge_discharge(power_request_W)
 
     status = battery_dict = {
@@ -149,6 +151,7 @@ while True:
         "batt_A": batt_A,
         "batt_T": batt_T,
         "batt_charge_V": batt_charge_V,
+        "batt_discharge_V": batt_discharge_V,
         "batt_charge_A": batt_charge_A,
         "batt_discharge_A": batt_discharge_A,
         "protection_flags": protection_flags,
