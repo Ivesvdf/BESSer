@@ -22,7 +22,7 @@ Then execute
 
 ```pipenv install```
 
-to install dependencies.
+to install dependencies. Run ```pipenv shell``` to get a shell where your dependencies are present then execute
 
 ```python main.py``` 
 
