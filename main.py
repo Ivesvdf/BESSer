@@ -52,6 +52,8 @@ class DeviationReason(enum.Enum):
     BATTERY_CURRENT_LIMIT = enum.auto()
     INVERTER_FAULT_SET = enum.auto()
     NO_MQTT_HEARTBEAT = enum.auto()
+    CHARGE_ABOVE_MAX_SOC = enum.auto()
+    DISCHARGE_BELOW_MIN_SOC = enum.auto()
 
 last_broadcast_time = 0
 
@@ -67,7 +69,8 @@ while True:
 
     power_request_W = mqtt_requested_power_W or 0
 
-    if (config.mqtt_heartbeat_interval_s != 0 and time.time() - last_heartbeat_timestamp) > config.mqtt_heartbeat_interval_s:
+    time_since_last_heartbeat_s = (config.mqtt_heartbeat_interval_s != 0 and time.time() - last_heartbeat_timestamp)
+    if power_request_W != 0 and time_since_last_heartbeat_s > config.mqtt_heartbeat_interval_s:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_MQTT_HEARTBEAT)
 
@@ -86,23 +89,29 @@ while True:
 
     inverter_fault_flags = charger_inverter.get_fault_flags()
 
-    if RequestFlags.CHARGE_ENABLE not in request_flags:
+    if power_request_W > 0 and RequestFlags.CHARGE_ENABLE not in request_flags:
         power_request_W = max(0, power_request_W)
         deviation_reasons.add(DeviationReason.CHARGE_ENABLE_NOT_SET)
-    if RequestFlags.DISCHARGE_ENABLE not in request_flags:
+    if power_request_W < 0 and RequestFlags.DISCHARGE_ENABLE not in request_flags:
         power_request_W = min(0, power_request_W)
         deviation_reasons.add(DeviationReason.DISCHARGE_ENABLE_NOT_SET)
+
+
 
     if RequestFlags.REQUEST_FULL_CHARGE in request_flags:
         # Recharge fully by never discharging.
         # If we wanted to we could also charge from grid however
         # a few days to fully charge won't matter for calibration.
         soc_min = 99
-        deviation_reasons.add(DeviationReason.REQUEST_FULL_CHARGE_SET)
+
+        if power_request_W < 0:
+            deviation_reasons.add(DeviationReason.REQUEST_FULL_CHARGE_SET)
     elif RequestFlags.REQUEST_FORCE_CHARGE_1 in request_flags or \
          RequestFlags.REQUEST_FORCE_CHARGE_2 in request_flags:
         soc_min = 20
-        deviation_reasons.add(DeviationReason.REQUEST_FORCE_CHARGE_SET)
+
+        if power_request_W < 0:
+            deviation_reasons.add(DeviationReason.REQUEST_FORCE_CHARGE_SET)
 
     # If any protection flag is set, only compensate for 
     if len(protection_flags) == 1:
@@ -119,6 +128,13 @@ while True:
     if len(alarm_flags) > 0:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.ALARM_FLAG_SET)
+
+    if power_request_W > 0 and batt_soc_pct > soc_max:
+        power_request_W = 0
+        deviation_reasons.add(DeviationReason.CHARGE_ABOVE_MAX_SOC)
+    elif (power_request_W < 0 and batt_soc_pct < soc_min):
+       power_request_W = 0
+       deviation_reasons.add(DeviationReason.DISCHARGE_BELOW_MIN_SOC)
 
     oldest_receive_time = battery.get_oldest_receive_time()
     oldest_battery_receive_time_age = time.time() - oldest_receive_time

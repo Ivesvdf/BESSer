@@ -131,7 +131,7 @@ class PylontechCANBattery:
         can_id = message.arbitration_id
         can_buffer = message.data
 
-        logger.info(f"Received {message}")
+        #logger.debug(f"Received {message}")
 
         self._last_receive_time[message.arbitration_id] = time.time()
 
