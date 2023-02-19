@@ -124,12 +124,12 @@ class PylontechCANBattery:
         return min([v for k,v in self._last_receive_time.items() if k in self._core_ids ])
              
     def process_can(self, message):
-        can_id = message.can_id, 
+        can_id = message.arbitration_id
         can_buffer = message.data
 
         logger.info(f"Received {message}")
 
-        self._last_receive_time[message.can_id] = time.time()
+        self._last_receive_time[message.arbitration_id] = time.time()
 
         # 0x305 - Inverter reply (we ignore)
         # 0x351 - Battery voltage + current limits
@@ -253,6 +253,6 @@ class PylontechCANBattery:
         elif can_id == 0x35E:
             # Manufacturer Name: "PYLON  "
             logger.info(F"ID: 0x35E ", end="")
-            for i in range(can_buffer[8]):
+            for i in range(len(can_buffer)):
                 logger.info(chr(can_buffer[i]), end="")
-            logger.info()
+            logger.info("")

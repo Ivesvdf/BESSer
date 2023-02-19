@@ -119,7 +119,7 @@ while True:
         deviation_reasons.add(DeviationReason.ALARM_FLAG_SET)
 
     oldest_receive_time = battery.get_oldest_receive_time()
-    oldest_receive_time_age = time.time() - oldest_receive_time
+    oldest_battery_receive_time_age = time.time() - oldest_receive_time
 
     batt_max_charge_W = (batt_V or 0) * (batt_charge_A or 0)
     batt_max_discharge_W = (batt_V or 0)*(batt_discharge_A or 0)
@@ -133,7 +133,7 @@ while True:
         power_request_W = batt_max_discharge_W
         deviation_reasons.add(DeviationReason.BATTERY_CURRENT_LIMIT)
 
-    if oldest_receive_time_age > 30:
+    if oldest_battery_receive_time_age > 30:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_DATA_FROM_BATTERY)
 
@@ -144,8 +144,7 @@ while True:
     charger_inverter.set_battery_voltage_limits((config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
     charger_inverter.request_charge_discharge(power_request_W)
 
-
-    battery_status = battery_dict = {
+    status = battery_dict = {
         "batt_V": batt_V,
         "batt_A": batt_A,
         "batt_T": batt_T,
@@ -159,9 +158,6 @@ while True:
         "batt_soh_pct": batt_soh_pct,
         "deviation_reasons": deviation_reasons,
         "power_request": power_request_W,
-    }
-
-    inverter_status = {
         'inverter_DC_V': charger_inverter.get_Vout_V(),
         'inverter_temperature_1': charger_inverter.get_temperature_1(),
         'inverter_AC_V': charger_inverter.get_Vin_V(),
@@ -174,7 +170,7 @@ while True:
 
     if now - last_broadcast_time > config.mqtt_status_broadcast_interval_s: 
         last_broadcast_time = now
-        mqtt.broadcast_status(battery_status | inverter_status)
+        mqtt.broadcast_status(status)
 
     time.sleep(1)
 

@@ -28,19 +28,22 @@ class MqttInterface:
 
         self.__client.connect(*connect_args)
 
+        self.__charge_discharge_topic = f"{self.prefix}/charge_discharge_request"
+        self.__status_topic = f"{self.prefix}/status"
+        self.__heartbeat_topic = f"{self.prefix}/heartbeat"
+
     # Define callback functions for connecting, publishing, and receiving messages
     def on_connect(self, client, userdata, flags, rc):
         print(f"Connected with result code {rc}")
         # Subscribe to a topic
-        client.subscribe(f"{self.prefix}/charge_discharge_request")
-        client.subscribe(f"{self.prefix}/status")
-        client.subscribe(f"{self.prefix}/heartbeat")
+        client.subscribe(self.__charge_discharge_topic)
+        client.subscribe(self.__status_topic)
+        client.subscribe(self.__heartbeat_topic)
 
-        client.will_set(f"{self.prefix}/status", payload=None, qos=0, retain=True)
-
+        client.will_set(self.__status_topic, payload=None, qos=0, retain=True)
 
     def on_publish(self, client, userdata, mid):
-        print(f"Message published with ID {mid}")
+        print(f"Message published with ID {mid}: {userdata}")
 
     def on_message(self, client, userdata, msg):
         print(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
