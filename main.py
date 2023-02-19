@@ -3,6 +3,7 @@ import time
 
 import battery
 import charger_inverter
+import config_validator
 import config
 import mqtt_interface
 import threadsafe_can
@@ -36,7 +37,7 @@ def on_hearbeat():
     last_heartbeat_timestamp = time.time()
 
 mqtt.on_power_request = on_mqtt_power_request
-mqtt.on_hearbeat = on_hearbeat
+mqtt.on_heartbeat = on_hearbeat
 
 class DeviationReason(enum.Enum):
     CHARGE_ENABLE_NOT_SET = enum.auto()
@@ -50,6 +51,7 @@ class DeviationReason(enum.Enum):
     NO_DATA_FROM_BATTERY = enum.auto()
     BATTERY_CURRENT_LIMIT = enum.auto()
     INVERTER_FAULT_SET = enum.auto()
+    NO_MQTT_HEARTBEAT = enum.auto()
 
 last_broadcast_time = 0
 
@@ -64,6 +66,10 @@ while True:
     soc_min = config.battery_min_soc_discharge
 
     power_request_W = mqtt_requested_power_W or 0
+
+    if (time.time() - last_heartbeat_timestamp) > config.mqtt_heartbeat_interval_s:
+        power_request_W = 0
+        deviation_reasons.add(DeviationReason.NO_MQTT_HEARTBEAT)
 
     batt_V = battery.get_batt_V()
     batt_A = battery.get_batt_A()

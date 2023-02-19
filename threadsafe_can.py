@@ -34,9 +34,11 @@ class ThreadSafeCanInterface:
     def receive_loop(self):
         while not self.__receive_stop_event.is_set():
             with self.__lock:
-                message = self.__bus.recv()
-            for hook in self.__receive_hooks:
-                hook(message)
+                message = self.__bus.recv(timeout=0.01)
+
+            if message != None:
+                for hook in self.__receive_hooks:
+                    hook(message)
                 
         self.__bus.shutdown()
 

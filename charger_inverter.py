@@ -258,6 +258,7 @@ class BICChargerInverter:
 
         self.__communication_thread = threading.Thread(target=self.__run, daemon=True)
         self.__receive_stop_event = threading.Event()
+        self.__communication_thread.start()
 
     def set_battery_voltage_limits(self, limits):
         self.__battery_voltage_limits = limits
@@ -371,7 +372,7 @@ class BICChargerInverter:
 
     def request_until_okay(self, command, exit_condition):
         last_scale_request_time = 0
-        while not exit_condition(): 
+        while not exit_condition(last_scale_request_time): 
             now = time.time()
             if now - last_scale_request_time > 1:
                 last_scale_request_time = now
@@ -437,11 +438,11 @@ class BICChargerInverter:
         self.__requested_charge_power_W = charge_power_W
     
     def __write_command(self, command:BICCommand, value:int): 
-        data = [ command & 0xFF, (command & 0xFF00) >> 8, (value & 0xFF), (value & 0xFF00) >> 8 ]
+        data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8, (value & 0xFF), (value & 0xFF00) >> 8 ]
         self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__write_arb_id, dlc=4, data=data, is_extended_id=True))
 
     def __start_read_command(self, command:BICCommand):
-        data = [ command & 0xFF, (command & 0xFF00) >> 8 ]
+        data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8 ]
         self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__read_arb_id, dlc=2, data=data, is_extended_id=True))
 
         # Reply will be received asynchronously
