@@ -1,0 +1,41 @@
+import threadsafe_can as can
+
+# bus = can.Bus(interface='socketcan', channel='vcan0', bitrate=250000)
+# bus = can.Bus(interface='pcan', channel='PCAN_USBBUS1', bitrate=250000)
+# bus = can.Bus(interface='ixxat', channel=0, bitrate=250000)
+# bus = can.Bus(interface='vector', app_name='CANalyzer', channel=0, bitrate=250000)
+# ...
+battery_canbus = can.Bus(interface='virtual', channel='test', bitrate=500000)
+charger_inverter_canbus = can.Bus(interface='virtual', channel='test2', bitrate=250000)
+
+# Arguments for paho mqtt connect function
+# connect(host, port=1883, keepalive=60, bind_address="")
+#   The connect() function connects the client to a broker. This is a blocking function. It takes the following arguments:
+# host
+#   the hostname or IP address of the remote broker
+# port
+#   the network port of the server host to connect to. Defaults to 1883. Note that the default port for MQTT over SSL/TLS is 8883 
+#   so if you are using tls_set() or tls_set_context(), the port may need providing manually
+# keepalive
+#   maximum period in seconds allowed between communications with the broker. If no other messages are being exchanged, this 
+#   controls the rate at which the client will send ping messages to the broker
+# bind_address
+#   the IP address of a local network interface to bind this client to, assuming multiple interfaces exist
+mqtt_connect_args = ("192.168.0.41", 1883, 60)
+mqtt_topic_prefix = "homebattery1"
+mqtt_status_broadcast_interval_s = 10
+
+# interval at which the requested power is reset to 0 if no heartbeat is received. When set to 0 this is infinitely long
+mqtt_heartbeat_interval_s = 0 
+
+battery_max_charge_power_W = 2000
+battery_max_discharge_power_W = 2100
+
+battery_max_soc_charge = 90
+battery_min_soc_discharge = 10
+battery_min_voltage = 44
+battery_max_voltage = 53 
+
+charger_inverter_device_id = 0
+charger_inverter_model_voltage = 48
+
