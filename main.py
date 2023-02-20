@@ -98,8 +98,6 @@ while True:
         power_request_W = min(0, power_request_W)
         deviation_reasons.add(DeviationReason.DISCHARGE_ENABLE_NOT_SET)
 
-
-
     if RequestFlags.REQUEST_FULL_CHARGE in request_flags:
         # Recharge fully by never discharging.
         # If we wanted to we could also charge from grid however

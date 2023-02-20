@@ -48,60 +48,6 @@ class SystemStatusFlags(enum.Enum):
     EEPROM_DATA_ACCESS_ERROR = 1 << 6  # EEPROM data access error (0 = EEPROM data access normal, 1 = EEPROM data access error)
 
 
-class VoutFactor(enum.Enum):
-    COMMANDS_NOT_SUPPORTED = 0x0
-    FACTOR_0_001 = 0x4
-    FACTOR_0_01 = 0x5
-    FACTOR_0_1 = 0x6
-    FACTOR_1_0 = 0x7
-    FACTOR_10 = 0x8
-    FACTOR_100 = 0x9
-
-class IoutFactor(enum.Enum):
-    COMMANDS_NOT_SUPPORTED = 0x0
-    FACTOR_0_001 = 0x4
-    FACTOR_0_01 = 0x5
-    FACTOR_0_1 = 0x6
-    FACTOR_1_0 = 0x7
-    FACTOR_10 = 0x8
-    FACTOR_100 = 0x9
-
-class VinFactor(enum.Enum):
-    COMMANDS_NOT_SUPPORTED = 0x0
-    FACTOR_0_001 = 0x4
-    FACTOR_0_01 = 0x5
-    FACTOR_0_1 = 0x6
-    FACTOR_1_0 = 0x7
-    FACTOR_10 = 0x8
-    FACTOR_100 = 0x9
-
-class FanSpeedFactor(enum.Enum):
-    COMMANDS_NOT_SUPPORTED = 0x0
-    FACTOR_0_001 = 0x4
-    FACTOR_0_01 = 0x5
-    FACTOR_0_1 = 0x6
-    FACTOR_1_0 = 0x7
-    FACTOR_10 = 0x8
-    FACTOR_100 = 0x9
-
-class Temperature1Factor(enum.Enum):
-    COMMANDS_NOT_SUPPORTED = 0x0
-    FACTOR_0_001 = 0x4
-    FACTOR_0_01 = 0x5
-    FACTOR_0_1 = 0x6
-    FACTOR_1_0 = 0x7
-    FACTOR_10 = 0x8
-    FACTOR_100 = 0x9
-
-class TinFactor(enum.Enum):
-    COMMANDS_NOT_SUPPORTED = 0x0
-    FACTOR_0_001 = 0x4
-    FACTOR_0_01 = 0x5
-    FACTOR_0_1 = 0x6
-    FACTOR_1_0 = 0x7
-    FACTOR_10 = 0x8
-    FACTOR_100 = 0x9
-
 
 class SystemConfig:
     """
@@ -212,11 +158,31 @@ def get_reverse_iout_adjustable_range(model_voltage_V):
 
 def parse_flags(the_enum, value):
     """Receives an integer representing the device status flags and returns a dictionary containing the status of each flag"""
-    flags = {}
+    flags = set()
     for flag in the_enum:
-        flags[flag.name] = bool(value & flag.value)
+        if value & flag.value:
+            flags.add(flag)
     return flags
 
+def from_twos_complement(num: int, bits: int) -> int:
+    """Converts a two's complement integer to a signed integer"""
+    if num & (1 << (bits - 1)):
+        # Negative number
+        inverted = num ^ ((1 << bits) - 1)
+        return -(inverted + 1)
+    else:
+        # Positive number
+        return num
+def to_twos_complement(num: int, bits: int) -> int:
+    """Returns the two's complement integer representation of num with bits number of bits"""
+    if num >= 0:
+        # Positive numbers
+        return num
+    else:
+        # Negative numbers
+        max_val = 1 << bits
+        return max_val + num
+    
 class BICChargerInverter:
     def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage:int, battery_voltage_limits_V):
         self.__canbus = can
@@ -226,14 +192,13 @@ class BICChargerInverter:
             logger.error("Invalid device id, device id should range from 0 to 7")
             device_id = 0
 
-        self.__read_arb_id = 0x000C0200 | device_id
-        self.__write_arb_id = 0x000C0300 | device_id
+        self.__response_arb_id = 0x000C0200 | device_id
+        self.__command_arb_id = 0x000C0300 | device_id
         self.__receive_broadcast_arb_id = 0x000C03FF
 
         self.__Vout_factor = None
         self.__Iout_factor = None
         self.__Vin_factor = None
-        self.__fan_speed_factor = None
         self.__temperature_1_factor = None
         self.__Iin_factor = None
 
@@ -327,7 +292,7 @@ class BICChargerInverter:
             self.__start_read_command(BICCommand.SYSTEM_STATUS)
             time.sleep(command_interval_s)
 
-            if self.__Vout_V == None or self.__Iout_A == None or self.VinV == None or self.__temperature_1 == None:
+            if self.__Vout_V == None or self.__Iout_A == None or self.__Vin_V == None or self.__temperature_1 == None:
                 logger.Info("Still starting, will not execute")
             else:
                 operation_requested = self.__requested_charge_power_W != 0
@@ -363,20 +328,20 @@ class BICChargerInverter:
 
                 if operation_requested:
                     if instructed_current_A > 0: # charge
-                        self.__write_command(BICCommand.DIRECTION_CTRL, 0)
+                        self.__write_command(BICCommand.DIRECTION_CTRL, 0, 1)
                         time.sleep(command_interval_s)
-                        self.__write_command(BICCommand.VOUT_SET, max_batt_voltage_V)
+                        self.__write_command(BICCommand.VOUT_SET, (int)(max_batt_voltage_V / self.__Vout_factor), 2)
                         time.sleep(command_interval_s)
-                        self.__write_command(BICCommand.IOUT_SET, instructed_current_A)
+                        self.__write_command(BICCommand.IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
                     else: # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1)
                         time.sleep(command_interval_s)
-                        self.__write_command(BICCommand.REVERSE_VOUT_SET, min_batt_voltage_V)
+                        self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(min_batt_voltage_V / self.__Vout_factor), 2)
                         time.sleep(command_interval_s)
-                        self.__write_command(BICCommand.REVERSE_IOUT_SET, instructed_current_A)
+                        self.__write_command(BICCommand.REVERSE_IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
                 else:
-                    self.__write_command(BICCommand.IOUT_SET, 0)
-                    self.__write_command(BICCommand.REVERSE_IOUT_SET, 0)
+                    self.__write_command(BICCommand.IOUT_SET, 0, 2)
+                    self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
 
                 if operation_requested != self.__operational:
                     self.__write_command(BICCommand.OPERATION, 1 if operation_requested else 0)
@@ -412,7 +377,6 @@ class BICChargerInverter:
             self.__Vout_factor = parse_factor(data & 0x0F)
             self.__Iout_factor = parse_factor((data & 0xF0) >> 4)
             self.__Vin_factor = parse_factor((data & 0x0F00) >> 8)
-            self.__fan_speed_factor = parse_factor((data & 0xF000) >> 12)
             self.__temperature_1_factor = parse_factor((data & 0x0F0000) >> 16)
             self.__Iin_factor = parse_factor((data & 0x0F000000) >> 24)
         elif command == BICCommand.OPERATION:
@@ -420,18 +384,18 @@ class BICChargerInverter:
         elif command == BICCommand.READ_VOUT:
             self.__Vout_V = data * self.__Vout_factor
         elif command == BICCommand.READ_TEMPERATURE_1:
-            self.__temperature_1 = data * self.__temperature_1_factor # todo support negative temperatures!
+            self.__temperature_1 = from_twos_complement(data, 16) * self.__temperature_1_factor # todo support negative temperatures!
         elif command == BICCommand.READ_VIN:
             self.__Vin_V = data * self.__Vin_factor
         elif command == BICCommand.READ_IOUT:
-            self.__Iout_A = data * self.__Iout_factor
+            self.__Iout_A = from_twos_complement(data, 16) * self.__Iout_factor
 
 
     def __on_can_receive(self, msg: threadsafe_can.Message):
         logger.info(f"Received {msg}")
 
         try:
-            if msg.arbitration_id == self.__receive_broadcast_arb_id or msg.arbitration_id == self.__read_arb_id:
+            if msg.arbitration_id == self.__receive_broadcast_arb_id or msg.arbitration_id == self.__response_arb_id:
                 data = msg.data
                 
                 # pad with zeros until length is 6
@@ -445,20 +409,21 @@ class BICChargerInverter:
         except:
             logger.exception("Unknown BIC response received")
 
-
+    
     def request_charge_discharge(self, charge_power_W: float): 
         """Request power to be put into the battery (if argument is positive),
         or drawn from the battery by the inverter (if argument is negative)."""
         
         self.__requested_charge_power_W = charge_power_W
     
-    def __write_command(self, command:BICCommand, value:int): 
+    def __write_command(self, command:BICCommand, value:int, num_data_bytes:int = 4): 
+        value = to_twos_complement(value, 8*num_data_bytes)
         data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8, (value & 0xFF), (value & 0xFF00) >> 8 ]
-        self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__write_arb_id, dlc=4, data=data, is_extended_id=True))
+        self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__command_arb_id, dlc=4, data=data, is_extended_id=True))
 
     def __start_read_command(self, command:BICCommand):
-        data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8 ]
-        self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__read_arb_id, dlc=2, data=data, is_extended_id=True))
+        data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8]
+        self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__command_arb_id, dlc=2, data=data, is_extended_id=True))
 
         # Reply will be received asynchronously
 
