@@ -54,8 +54,10 @@ class DeviationReason(enum.Enum):
     NO_MQTT_HEARTBEAT = enum.auto()
     CHARGE_ABOVE_MAX_SOC = enum.auto()
     DISCHARGE_BELOW_MIN_SOC = enum.auto()
+    INVERTER_POWER_LIMIT = enum.auto()
 
 last_broadcast_time = 0
+last_broadcast_power_request_W = None
 
 while True:
     protection_flags = battery.get_protection_flags() or set()
@@ -142,8 +144,7 @@ while True:
     batt_max_charge_W = (batt_V or 0) * (batt_charge_A or 0)
     batt_max_discharge_W = (batt_V or 0)*(batt_discharge_A or 0)
 
-    # From this point on we're talking about inverter limits. Even if the battery
-    # really wants to be charged if the inverter can't do it we can't do it.
+
     if power_request_W > batt_max_charge_W:
         power_request_W = batt_max_charge_W
         deviation_reasons.add(DeviationReason.BATTERY_CURRENT_LIMIT)
@@ -155,9 +156,21 @@ while True:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_DATA_FROM_BATTERY)
 
+    # From this point on we're talking about inverter limits. Even if the battery
+    # really wants to be charged if the inverter can't do it we can't do it.
     if len(inverter_fault_flags) > 0: 
         power_request_W = 0
         deviation_reasons.add(DeviationReason.INVERTER_FAULT_SET)
+
+    charge_power_limit_W = charger_inverter.get_charge_power_limit_W()
+    invert_power_limit_W = charger_inverter.get_invert_power_limit_W()
+    if power_request_W > charge_power_limit_W:
+        power_request_W = charge_power_limit_W
+        deviation_reasons.add(DeviationReason.INVERTER_POWER_LIMIT)
+    elif power_request_W < invert_power_limit_W:
+        power_request_W = invert_power_limit_W
+        deviation_reasons.add(DeviationReason.INVERTER_POWER_LIMIT)
+
 
     charger_inverter.set_battery_voltage_limits((batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
     charger_inverter.request_charge_discharge(power_request_W)
@@ -187,8 +200,9 @@ while True:
 
     now = time.time()
 
-    if now - last_broadcast_time > config.mqtt_status_broadcast_interval_s: 
+    if (now - last_broadcast_time > config.mqtt_status_broadcast_interval_s) or (last_broadcast_power_request_W != power_request_W): 
         last_broadcast_time = now
+        last_broadcast_power_request_W = power_request_W
         mqtt.broadcast_status(status)
 
     time.sleep(1)

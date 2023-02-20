@@ -249,6 +249,9 @@ class BICChargerInverter:
         self.__requested_charge_power_W = 0
         self.__can_control = None
 
+        self.__invert_power_limit_W = -1725
+        self.__charge_power_limit_W = 2160
+
         self.__battery_voltage_limits = battery_voltage_limits_V
 
         self.__Vout_limits = get_vout_adjustable_range(model_voltage)
@@ -260,6 +263,12 @@ class BICChargerInverter:
         self.__receive_stop_event = threading.Event()
         self.__communication_thread.start()
 
+    def get_charge_power_limit_W(self):
+        return self.__charge_power_limit_W
+    
+    def get_invert_power_limit_W(self):
+        return self.__invert_power_limit_W
+    
     def set_battery_voltage_limits(self, limits):
         self.__battery_voltage_limits = limits
 
@@ -301,21 +310,22 @@ class BICChargerInverter:
 
 
         logger.info("Starting main communication loop")
+        command_interval_s = 0.025
         while not self.__receive_stop_event.is_set():
             self.__start_read_command(BICCommand.READ_IOUT)
-            time.sleep(0.01)
+            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.READ_TEMPERATURE_1)
-            time.sleep(0.01)
+            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.READ_VIN)
-            time.sleep(0.01)
+            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.READ_VOUT)
-            time.sleep(0.01)
+            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.OPERATION)
-            time.sleep(0.01)
+            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.FAULT_STATUS)
-            time.sleep(0.01)
+            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.SYSTEM_STATUS)
-            time.sleep(0.01)
+            time.sleep(command_interval_s)
 
             if self.__Vout_V == None or self.__Iout_A == None or self.VinV == None or self.__temperature_1 == None:
                 logger.Info("Still starting, will not execute")
@@ -329,16 +339,21 @@ class BICChargerInverter:
 
                 # Does the BIC device really have a minimum current? See 5.10.5... while in the intro it seems
                 # it can regulate down to 0A? 
-                if self.__requested_current_A > 0: 
-                    # charge
-                    lower_limit, upper_limit = self.__Iout_limits
-                else:
-                    # discharge
-                    lower_limit, upper_limit = self.__reverse_Iout_limits
-                
-                instructed_current_A = 0
-                if self.__requested_current_A < lower_limit or self.__requested_current_A > upper_limit: 
+                apply_self_imposed_current_limits = False
+
+                if apply_self_imposed_current_limits:
+                    if self.__requested_current_A > 0: 
+                        # charge
+                        lower_limit, upper_limit = self.__Iout_limits
+                    else:
+                        # discharge
+                        lower_limit, upper_limit = self.__reverse_Iout_limits
+                    
                     instructed_current_A = 0
+                    if self.__requested_current_A < lower_limit or self.__requested_current_A > upper_limit: 
+                        instructed_current_A = 0
+                    else:
+                        instructed_current_A = self.__requested_current_A
                 else:
                     instructed_current_A = self.__requested_current_A
 
@@ -349,15 +364,15 @@ class BICChargerInverter:
                 if operation_requested:
                     if instructed_current_A > 0: # charge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 0)
-                        time.sleep(0.01)
+                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.VOUT_SET, max_batt_voltage_V)
-                        time.sleep(0.01)
+                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.IOUT_SET, instructed_current_A)
                     else: # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1)
-                        time.sleep(0.01)
+                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, min_batt_voltage_V)
-                        time.sleep(0.01)
+                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.REVERSE_IOUT_SET, instructed_current_A)
                 else:
                     self.__write_command(BICCommand.IOUT_SET, 0)
