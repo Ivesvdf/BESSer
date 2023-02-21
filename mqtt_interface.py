@@ -12,7 +12,7 @@ class SetEncoder(json.JSONEncoder):
         return super(SetEncoder, self).default(obj)
         
 class MqttInterface:
-    def __init__(self, connect_args, prefix):
+    def __init__(self, connect_args, credentials, prefix):
         # Create a client instance
         self.__client = mqtt.Client()
         self.__client.on_connect = self.on_connect
@@ -25,6 +25,10 @@ class MqttInterface:
 
         # Start the network loop
         self.__client.loop_start()
+
+        
+        if credentials != None:
+            self.__client.username_pw_set(*credentials)
 
         self.__client.connect(*connect_args)
 

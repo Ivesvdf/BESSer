@@ -22,6 +22,7 @@ charger_inverter_canbus = can.Bus(interface='virtual', channel='test2', bitrate=
 # bind_address
 #   the IP address of a local network interface to bind this client to, assuming multiple interfaces exist
 mqtt_connect_args = ("192.168.0.41", 1883, 60)
+mqtt_credentials = None # or tuple of (username, password) if auth is required
 mqtt_topic_prefix = "homebattery1"
 mqtt_status_broadcast_interval_s = 10
 

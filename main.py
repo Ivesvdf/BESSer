@@ -12,7 +12,7 @@ from battery import AlarmFlags, ProtectionFlags, RequestFlags
 battery_can_interface = threadsafe_can.ThreadSafeCanInterface(config.battery_canbus)
 inverter_can_interface = threadsafe_can.ThreadSafeCanInterface(config.charger_inverter_canbus)
 
-mqtt = mqtt_interface.MqttInterface(config.mqtt_connect_args, config.mqtt_topic_prefix)
+mqtt = mqtt_interface.MqttInterface(config.mqtt_connect_args, config.mqtt_credentials, config.mqtt_topic_prefix)
 
 charger_inverter = charger_inverter.BICChargerInverter(inverter_can_interface, 
                                                        config.charger_inverter_device_id, 
