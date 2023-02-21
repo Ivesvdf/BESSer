@@ -12,7 +12,7 @@ assert isinstance(config.mqtt_connect_args[0], str), "config.mqtt_connect_args[0
 assert isinstance(config.mqtt_connect_args[1], int), "config.mqtt_connect_args[1] is not of type int"
 assert isinstance(config.mqtt_connect_args[2], int), "config.mqtt_connect_args[2] is not of type int"
 assert isinstance(config.mqtt_credentials, tuple), "config.mqtt_credentials is not of type tuple"
-assert isinstance(config.mqtt_credentials == None or len(config.mqtt_credentials)==2), "config.mqtt_credentials is not of length 2 or None"
+assert config.mqtt_credentials == None or len(config.mqtt_credentials)==2, "config.mqtt_credentials is not of length 2 or None"
 assert isinstance(config.mqtt_credentials[0], str), "config.mqtt_credentials[0] is not of type str"
 assert isinstance(config.mqtt_credentials[1], str), "config.mqtt_credentials[1] is not of type str"
 

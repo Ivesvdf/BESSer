@@ -26,7 +26,6 @@ class MqttInterface:
         # Start the network loop
         self.__client.loop_start()
 
-        
         if credentials != None:
             self.__client.username_pw_set(*credentials)
 
@@ -37,18 +36,16 @@ class MqttInterface:
 
     # Define callback functions for connecting, publishing, and receiving messages
     def on_connect(self, client, userdata, flags, rc):
-        print(f"Connected with result code {rc}")
+        logger.info(f"Connected with result code {rc}")
         # Subscribe to a topic
         client.subscribe(self.__charge_discharge_topic)
         client.subscribe(self.__status_topic)
 
-        client.will_set(self.__status_topic, payload=None, qos=0, retain=True)
-
     def on_publish(self, client, userdata, mid):
-        print(f"Message published with ID {mid}: {userdata}")
+        logger.info(f"Message published with ID {mid}: {userdata}")
 
     def on_message(self, client, userdata, msg):
-        print(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
+        logger.info(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
 
         if msg.topic == f"{self.prefix}/charge_discharge_request":
             if self.on_power_request != None:
@@ -64,5 +61,3 @@ class MqttInterface:
     def broadcast_status(self, status):
         self.__client.publish(f"{self.prefix}/status", json.dumps(status, cls=SetEncoder))
     
-
-
