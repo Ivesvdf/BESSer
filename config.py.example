@@ -32,8 +32,12 @@ mqtt_heartbeat_interval_s = 0
 battery_max_charge_power_W = 2000
 battery_max_discharge_power_W = 2100
 
+# Max state of charge below which the battery can be charged, can be lowered through MQTT
 battery_max_soc_charge = 90
-battery_min_soc_discharge = 10
+# Min state of charge above which the battery can be discharged, can be increased through MQTT or when the battery requires it.
+battery_min_soc_discharge = 20
+
+
 battery_min_voltage = 44
 battery_max_voltage = 53 
 

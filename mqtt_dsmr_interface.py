@@ -4,7 +4,7 @@ import json
 from loguru import logger
 import dsmr_parser
 
-class SetEncoder(json.JSONEncoder):
+class DsmrDataEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, dsmr_parser.objects.CosemObject):
             d = obj.values[0]
@@ -22,7 +22,7 @@ class SetEncoder(json.JSONEncoder):
             return d
         if isinstance(obj, dsmr_parser.objects.MbusDevice):
             return { k:v for (k,v) in obj }
-        return super(SetEncoder, self).default(obj)
+        return super(DsmrDataEncoder, self).default(obj)
         
 class MqttBroadcaster:
     def __init__(self, connect_args, credentials, topic):
@@ -59,6 +59,6 @@ class MqttBroadcaster:
     #    for (key, entry) in message:
    #         d[key] = entry.values[0]
         mapped = { k:v for (k,v) in message}
-        json_msg = json.dumps(mapped, cls=SetEncoder)
+        json_msg = json.dumps(mapped, cls=DsmrDataEncoder)
         self.__client.publish(self.__topic, json_msg)
     

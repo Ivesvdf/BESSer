@@ -22,6 +22,8 @@ battery = battery.PylontechCANBattery(battery_can_interface)
 
 mqtt_requested_power_W = None
 battery_requested_power_W = None 
+min_soc_override = None
+max_soc_override = None 
 
 def on_mqtt_power_request(power_W):
     global mqtt_requested_power_W
@@ -36,8 +38,18 @@ def on_hearbeat():
     global last_heartbeat_timestamp
     last_heartbeat_timestamp = time.time()
 
+def on_min_soc(soc):
+    global min_soc_override
+    min_soc_override = soc
+
+def on_max_soc(soc):
+    global max_soc_override
+    max_soc_override = soc
+
 mqtt.on_power_request = on_mqtt_power_request
 mqtt.on_heartbeat = on_hearbeat
+mqtt.on_min_soc = on_min_soc
+mqtt.on_max_soc = on_max_soc
 
 class DeviationReason(enum.Enum):
     CHARGE_ENABLE_NOT_SET = enum.auto()
@@ -66,8 +78,9 @@ while True:
 
     deviation_reasons = set()
     
-    soc_max = config.battery_max_soc_charge
-    soc_min = config.battery_min_soc_discharge
+    # Max soc can only be decreased through MQTT, min soc only increased. 
+    soc_max = min(config.battery_max_soc_charge, max_soc_override or 100)
+    soc_min = max(config.battery_min_soc_discharge, min_soc_override or 0)
 
     power_request_W = mqtt_requested_power_W or 0
 
@@ -150,7 +163,7 @@ while True:
         power_request_W = batt_max_discharge_W
         deviation_reasons.add(DeviationReason.BATTERY_CURRENT_LIMIT)
 
-    if oldest_battery_receive_time_age > 30:
+    if oldest_battery_receive_time_age > config.mqtt_heartbeat_interval_s:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_DATA_FROM_BATTERY)
 
@@ -186,6 +199,8 @@ while True:
         "request_flags": request_flags,
         "batt_soc_pct": batt_soc_pct,
         "batt_soh_pct": batt_soh_pct,
+        "min_soc_override": min_soc_override,
+        "max_soc_override": max_soc_override,
         "deviation_reasons": deviation_reasons,
         "power_request": power_request_W,
         'inverter_DC_V': charger_inverter.get_Vout_V(),

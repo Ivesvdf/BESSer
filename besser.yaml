@@ -1,0 +1,185 @@
+number:
+  - command_topic: "homebattery1/charge_discharge_request"
+    name: "BESS Charge/Discharge Request"
+    unique_id: "bat1_charge_discharge_request"
+    device_class: power
+    min: -2500
+    max: 2500
+    unit_of_measurement: "W"
+    value_template: "{{ value_json.power_request }}"
+  - command_topic: "homebattery1/min_soc"
+    state_topic: "homebattery1/status"
+    name: "BESS Min SoC Override"
+    unique_id: "bat1_min_soc_override_request"
+    device_class: battery
+    min: 0
+    max: 100
+    unit_of_measurement: "%"
+    value_template: "{{ value_json.min_soc_override }}"
+  - command_topic: "homebattery1/max_soc"
+    state_topic: "homebattery1/status"
+    name: "BESS Max SoC Override"
+    unique_id: "bat1_max_soc_override"
+    device_class: battery
+    min: 0
+    max: 100
+    unit_of_measurement: "%"
+    value_template: "{{ value_json.max_soc_override }}"
+sensor:
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    unique_id: "bat1_batt_V"
+    value_template: "{{ value_json.batt_V }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Inverter DC Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    unique_id: "bat1_inverter_DC_V"
+    value_template: "{{ value_json.inverter_DC_V }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Inverter AC Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    unique_id: "bat1_inverter_AC_V"
+    value_template: "{{ value_json.inverter_AC_V }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Intended Power"
+    unit_of_measurement: "W"
+    device_class: power
+    unique_id: "bat1_batt_W"
+    value_template: "{{ value_json.power_request }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Current"
+    device_class: current
+    unit_of_measurement: "A"
+    unique_id: "bat1_batt_A"
+    value_template: "{{ value_json.batt_A }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Temperature"
+    unit_of_measurement: "°C"
+    unique_id: "bat1_batt_T"
+    value_template: "{{ value_json.batt_T }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Inverter Temperature"
+    unit_of_measurement: "°C"
+    unique_id: "bat1_inverter_T"
+    value_template: "{{ value_json.inverter_temperature_1 }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Discharge Voltage"
+    device_class: voltage
+    unit_of_measurement: "V"
+    unique_id: "bat1_batt_discharge_V"
+    value_template: "{{ value_json.batt_discharge_V }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Charge Voltage"
+    device_class: voltage
+    unit_of_measurement: "V"
+    unique_id: "bat1_batt_charge_V"
+    value_template: "{{ value_json.batt_charge_V }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Inverter DC Charge Current"
+    device_class: current
+    unit_of_measurement: "A"
+    unique_id: "bat1_inverter_charge_A"
+    value_template: "{{ value_json.inverter_DC_A }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Charge Current"
+    device_class: current
+    unit_of_measurement: "A"
+    unique_id: "bat1_batt_charge_A"
+    value_template: "{{ value_json.batt_charge_A }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Discharge Current"
+    device_class: current
+    unit_of_measurement: "A"
+    unique_id: "bat1_batt_discharge_A"
+    value_template: "{{ value_json.batt_discharge_A }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery SOC"
+    unit_of_measurement: "%"
+    device_class: battery
+    unique_id: "bat1_batt_soc_pct"
+    value_template: "{{ value_json.batt_soc_pct }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery SOH"
+    unit_of_measurement: "%"
+    unique_id: "bat1_batt_soh_pct"
+    value_template: "{{ value_json.batt_soh_pct }}"
+    expire_after: 60
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Protection Flags"
+    icon: mdi:alert-circle-outline
+    unique_id: "bat1_batt_protection_flags"
+    expire_after: 60
+    value_template: >-
+      {% if value_json.protection_flags is not none %}
+        {{ value_json.protection_flags | join(', ') }}
+      {% else %}
+      {% endif %}
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Request Flags"
+    icon: mdi:safety-goggles
+    unique_id: "bat1_batt_request_flags"
+    expire_after: 60
+    value_template: >-
+      {% if value_json.request_flags is not none %}
+        {{ value_json.request_flags | join(', ') }}
+      {% else %}
+      {% endif %}
+  - state_topic: "homebattery1/status"
+    name: "BESS Battery Alarm Flags"
+    icon: mdi:safety-goggles
+    unique_id: "bat1_batt_alarm_flags"
+    expire_after: 60
+    value_template: >-
+      {% if value_json.alarm_flags is not none %}
+        {{ value_json.alarm_flags | join(', ') }}
+      {% else %}
+      {% endif %}
+  - state_topic: "homebattery1/status"
+    name: "BESS Request Deviation Reasons"
+    icon: mdi:transit-detour
+    unique_id: "bat1_batt_deviation_reasons"
+    expire_after: 60
+    value_template: >-
+      {% if value_json.deviation_reasons is not none %}
+        {{ value_json.deviation_reasons | join(', ') }}
+      {% else %}
+      {% endif %}
+  - state_topic: "homebattery1/status"
+    name: "BESS Charger/Inverter Fault Flags"
+    icon: mdi:safety-goggles
+    unique_id: "bat1_inverter_fault_flags"
+    expire_after: 60
+    value_template: >-
+      {% if value_json.inverter_fault_flags is not none %}
+        {{ value_json.inverter_fault_flags | join(', ') }}
+      {% else %}
+      {% endif %}
+  - state_topic: "homebattery1/status"
+    name: "BESS Charger/Inverter System Status"
+    icon: mdi:safety-goggles
+    unique_id: "bat1_inverter_system_status"
+    expire_after: 60
+    value_template: >-
+      {% if value_json.inverter_system_status is not none %}
+        {{ value_json.inverter_system_status | join(', ') }}
+      {% else %}
+      {% endif %}
+
+
