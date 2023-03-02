@@ -11,7 +11,7 @@ class BICCommand(enum.Enum):
     FAULT_STATUS = 0x40
     READ_VIN = 0x50
     READ_VOUT = 0x60
-    READ_IOUT = 0x70
+    READ_IOUT = 0x61
     READ_TEMPERATURE_1 = 0x62
     MFR_ID_B0B5 = 0x80
     MFR_ID_B6B11 = 0x81
@@ -196,6 +196,12 @@ class BICChargerInverter:
         self.__command_arb_id = 0x000C0300 | device_id
         self.__receive_broadcast_arb_id = 0x000C03FF
 
+        self.__last_command_time = 0
+        self.__command_interval_s = 0.025
+        self.__num_repeats = 3
+        self.__read_state = {}
+        self.__write_state = {}
+
         self.__Vout_factor = None
         self.__Iout_factor = None
         self.__Vin_factor = None
@@ -275,25 +281,18 @@ class BICChargerInverter:
 
 
         logger.info("Starting main communication loop")
-        command_interval_s = 0.025
+        
         while not self.__receive_stop_event.is_set():
             self.__start_read_command(BICCommand.READ_IOUT)
-            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.READ_TEMPERATURE_1)
-            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.READ_VIN)
-            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.READ_VOUT)
-            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.OPERATION)
-            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.FAULT_STATUS)
-            time.sleep(command_interval_s)
             self.__start_read_command(BICCommand.SYSTEM_STATUS)
-            time.sleep(command_interval_s)
 
             if self.__Vout_V == None or self.__Iout_A == None or self.__Vin_V == None or self.__temperature_1 == None:
-                logger.Info("Still starting, will not execute")
+                logger.info("Still starting, will not execute")
             else:
                 operation_requested = self.__requested_charge_power_W != 0
 
@@ -329,15 +328,11 @@ class BICChargerInverter:
                 if operation_requested:
                     if instructed_current_A > 0: # charge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 0, 1)
-                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.VOUT_SET, (int)(max_batt_voltage_V / self.__Vout_factor), 2)
-                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
                     else: # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1)
-                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(min_batt_voltage_V / self.__Vout_factor), 2)
-                        time.sleep(command_interval_s)
                         self.__write_command(BICCommand.REVERSE_IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
                 else:
                     self.__write_command(BICCommand.IOUT_SET, 0, 2)
@@ -349,7 +344,12 @@ class BICChargerInverter:
 
             time.sleep(5)
 
-
+    def get_write_state(self):
+        return dict(self.__write_state)
+    
+    def get_read_state(self):
+        return dict(self.__read_state)
+    
     def request_until_okay(self, command, exit_condition):
         last_scale_request_time = 0
         while not exit_condition(last_scale_request_time): 
@@ -366,6 +366,7 @@ class BICChargerInverter:
         self.__communication_thread.join()
 
     def __on_response_received(self, command:BICCommand, data:int): 
+        self.__read_state[command] = data
         if command == BICCommand.FAULT_STATUS:
             self.__fault_flags = parse_flags(FaultStatusFlag, data)
         elif command == BICCommand.SYSTEM_STATUS:
@@ -392,7 +393,7 @@ class BICChargerInverter:
 
 
     def __on_can_receive(self, msg: threadsafe_can.Message):
-        logger.info(f"Received {msg}")
+        # logger.info(f"Received {msg}")
 
         try:
             if msg.arbitration_id == self.__receive_broadcast_arb_id or msg.arbitration_id == self.__response_arb_id:
@@ -402,8 +403,11 @@ class BICChargerInverter:
                 while len(data) < 6:
                     data.append(0)
 
-                command = BICCommand(data[0] | (data[1]<<8))
-                data = data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24)
+                try:
+                    command = BICCommand(data[0] | (data[1]<<8))
+                    data = data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24)
+                except ValueError:
+                    logger.error(f"Invalid response received: {data}")
 
                 self.__on_response_received(command, data)
         except:
@@ -417,13 +421,28 @@ class BICChargerInverter:
         self.__requested_charge_power_W = charge_power_W
     
     def __write_command(self, command:BICCommand, value:int, num_data_bytes:int = 4): 
-        value = to_twos_complement(value, 8*num_data_bytes)
-        data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8, (value & 0xFF), (value & 0xFF00) >> 8 ]
-        self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__command_arb_id, dlc=4, data=data, is_extended_id=True))
+        self.__write_state[command] = value
 
+        for _ in range(self.__num_repeats):
+            value = to_twos_complement(value, 8*num_data_bytes)
+            data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8, (value & 0xFF), (value & 0xFF00) >> 8 ]
+            self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__command_arb_id, dlc=2+num_data_bytes, data=data, is_extended_id=True))
+
+            now = time.time()
+            if now - self.__last_command_time < self.__command_interval_s: 
+                time.sleep(now - self.__last_command_time)
+
+        self.__last_command_time = time.time()
     def __start_read_command(self, command:BICCommand):
-        data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8]
-        self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__command_arb_id, dlc=2, data=data, is_extended_id=True))
+        for _ in range(self.__num_repeats):
+            data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8]
+            self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__command_arb_id, dlc=2, data=data, is_extended_id=True))
+
+            now = time.time()
+            if now - self.__last_command_time < self.__command_interval_s: 
+                time.sleep(now - self.__last_command_time)
+
+            self.__last_command_time = time.time()
 
         # Reply will be received asynchronously
 

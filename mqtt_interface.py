@@ -4,6 +4,7 @@ from loguru import logger
 import enum
 
 from battery import AlarmFlags, ProtectionFlags, RequestFlags
+from charger_inverter import BICCommand
 
 class SetEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -77,3 +78,5 @@ class MqttInterface:
     def broadcast_status(self, status):
         self.__client.publish(f"{self.prefix}/status", json.dumps(status, cls=SetEncoder))
     
+    def broadcast_debug(self, status):
+        self.__client.publish(f"{self.prefix}/debug", json.dumps(status, cls=SetEncoder))

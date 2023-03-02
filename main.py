@@ -70,6 +70,7 @@ class DeviationReason(enum.Enum):
 
 last_broadcast_time = 0
 last_broadcast_power_request_W = None
+last_status = None
 
 while True:
     protection_flags = battery.get_protection_flags() or set()
@@ -186,6 +187,9 @@ while True:
     charger_inverter.set_battery_voltage_limits((batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
     charger_inverter.request_charge_discharge(power_request_W)
 
+    inverter_dc_V = charger_inverter.get_Vout_V()
+    inverter_dc_A = charger_inverter.get_Iout_A()
+
     status = battery_dict = {
         "batt_V": batt_V,
         "batt_A": batt_A,
@@ -203,20 +207,26 @@ while True:
         "max_soc_override": max_soc_override,
         "deviation_reasons": deviation_reasons,
         "power_request": power_request_W,
-        'inverter_DC_V': charger_inverter.get_Vout_V(),
+        'inverter_DC_V': inverter_dc_V,
         'inverter_temperature_1': charger_inverter.get_temperature_1(),
         'inverter_AC_V': charger_inverter.get_Vin_V(),
-        'inverter_DC_A': charger_inverter.get_Iout_A(),
+        'inverter_DC_A': inverter_dc_A,
+        'inverter_DC_VA': inverter_dc_V * inverter_dc_A if inverter_dc_V != None and inverter_dc_A != None else 0,
         'inverter_fault_flags': inverter_fault_flags,
         'inverter_system_status': charger_inverter.get_system_status(),
     }
 
     now = time.time()
 
-    if (now - last_broadcast_time > config.mqtt_status_broadcast_interval_s) or (last_broadcast_power_request_W != power_request_W): 
+    if (now - last_broadcast_time > config.mqtt_status_broadcast_interval_s) or (last_status != status): 
         last_broadcast_time = now
-        last_broadcast_power_request_W = power_request_W
+        last_status = status
         mqtt.broadcast_status(status)
+
+        def fix_dict(d):
+            return { str(k): v for k,v in d.items() } 
+        mqtt.broadcast_debug({ "inverter" : { "out" : fix_dict(charger_inverter.get_write_state()), "in": fix_dict(charger_inverter.get_read_state()) }})
+
 
     time.sleep(1)
 
