@@ -1,10 +1,7 @@
 import paho.mqtt.client as mqtt
 import json
 from loguru import logger
-import enum
 
-from battery import AlarmFlags, ProtectionFlags, RequestFlags
-from charger_inverter import BICCommand
 
 class SetEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -54,7 +51,7 @@ class MqttInterface:
     def __handle_int(self, topic, fun, msg): 
         try:
             if fun != None:
-                fun(int(msg.payload.decode()))
+                fun(int(float(msg.payload.decode())))
         except ValueError:
             logger.error(f"Could not process received {topic} instruction")
         except:

@@ -281,6 +281,7 @@ class BICChargerInverter:
 
 
         logger.info("Starting main communication loop")
+        prev_state = None
         
         while not self.__receive_stop_event.is_set():
             self.__start_read_command(BICCommand.READ_IOUT)
@@ -333,7 +334,7 @@ class BICChargerInverter:
                     else: # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1, 1)
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(min_batt_voltage_V / self.__Vout_factor), 2)
-                        self.__write_command(BICCommand.REVERSE_IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
+                        self.__write_command(BICCommand.REVERSE_IOUT_SET, (int)(-instructed_current_A / self.__Iout_factor), 2)
                 else:
                     self.__write_command(BICCommand.IOUT_SET, 0, 2)
                     self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
@@ -341,8 +342,14 @@ class BICChargerInverter:
                 if operation_requested != self.__operational:
                     self.__write_command(BICCommand.OPERATION, 1 if operation_requested else 0, 1)
 
+            # sleep for a bit until either data changes or timeout expires
+            start_of_sleep = time.time()
+            while time.time() - start_of_sleep < 2:
+                state = (self.__requested_charge_power_W)
 
-            time.sleep(5)
+                if state != prev_state:
+                    prev_state = state
+                time.sleep(0.1)
 
     def get_write_state(self):
         return dict(self.__write_state)
