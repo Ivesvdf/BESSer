@@ -143,10 +143,10 @@ while True:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.ALARM_FLAG_SET)
 
-    if power_request_W > 0 and batt_soc_pct > soc_max:
+    if power_request_W > 0 and (batt_soc_pct or 0) > soc_max:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.CHARGE_ABOVE_MAX_SOC)
-    elif (power_request_W < 0 and batt_soc_pct < soc_min):
+    elif (power_request_W < 0 and (batt_soc_pct or 0) < soc_min):
        power_request_W = 0
        deviation_reasons.add(DeviationReason.DISCHARGE_BELOW_MIN_SOC)
 
@@ -155,7 +155,6 @@ while True:
 
     batt_max_charge_W = (batt_V or 0) * (batt_charge_A or 0)
     batt_max_discharge_W = (batt_V or 0)*(batt_discharge_A or 0)
-
 
     if power_request_W > batt_max_charge_W:
         power_request_W = batt_max_charge_W
