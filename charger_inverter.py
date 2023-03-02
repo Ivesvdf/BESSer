@@ -334,7 +334,7 @@ class BICChargerInverter:
                     else: # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1, 1)
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(min_batt_voltage_V / self.__Vout_factor), 2)
-                        self.__write_command(BICCommand.REVERSE_IOUT_SET, (int)(-instructed_current_A / self.__Iout_factor), 2)
+                        self.__write_command(BICCommand.REVERSE_IOUT_SET, to_twos_complement((int)(instructed_current_A / self.__Iout_factor), 16), 2)
                 else:
                     self.__write_command(BICCommand.IOUT_SET, 0, 2)
                     self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
