@@ -166,7 +166,7 @@ class PylontechCANBattery:
                 val_signed -= 0x10000
             self.__batt_discharge_V = val_signed / 10
 
-            logger.info(f"Charge Voltage={self.__batt_charge_V}V, Charge Current={self.__batt_charge_A}A, Discharge Current={self.__batt_discharge_A}A")
+            logger.debug(f"Charge Voltage={self.__batt_charge_V}V, Charge Current={self.__batt_charge_A}A, Discharge Current={self.__batt_discharge_A}A")
 
         elif can_id == 0x355:
             # State of Charge (SOC) / State of Health (SOH) - 4 bytes of data
@@ -175,7 +175,7 @@ class PylontechCANBattery:
             self.__batt_soc_pct = (can_buffer[1] << 8) + can_buffer[0]
             self.__batt_soh_pct = (can_buffer[3] << 8) + can_buffer[2]
 
-            logger.info(f"SOC={self.__batt_soc_pct}%, SOH={self.__batt_soh_pct}%")
+            logger.debug(f"SOC={self.__batt_soc_pct}%, SOH={self.__batt_soh_pct}%")
 
         elif can_id == 0x356:
             # Voltage / Current / Temp - 6 bytes of data
@@ -196,7 +196,7 @@ class PylontechCANBattery:
                 val_signed -= 0x10000
             self.__batt_T = val_signed / 10
 
-            logger.info(f"ID: 0x356 Volts={self.__batt_V}, Current={self.__batt_A}, Temp={self.__batt_T}")
+            logger.debug(f"ID: 0x356 Volts={self.__batt_V}, Current={self.__batt_A}, Temp={self.__batt_T}")
 
         elif can_id == 0x359:
             protection_flags = set()
@@ -238,7 +238,7 @@ class PylontechCANBattery:
             self.__protection_flags = protection_flags
             self.__alarm_flags = alarm_flags
 
-            logger.info(f"ID: 0x359 Protection / Alarm Flags: {protection_flags}, {alarm_flags}")
+            logger.debug(f"ID: 0x359 Protection / Alarm Flags: {protection_flags}, {alarm_flags}")
 
         if can_id == 0x35c:
             # Request flags (0x35C)
@@ -257,8 +257,8 @@ class PylontechCANBattery:
             if byte_0 & RequestFlags.REQUEST_FULL_CHARGE:
                 flags.add(RequestFlags.REQUEST_FULL_CHARGE)
             self.__request_flags = flags
-            logger.info(F"ID: 0x35C Request Flags: {flags}")
+            logger.debug(F"ID: 0x35C Request Flags: {flags}")
 
         elif can_id == 0x35E:
             # Manufacturer Name: "PYLON  "
-            logger.info(F"ID: 0x35E {[ chr(can_buffer[i]) for i in range(len(can_buffer)) ]}")
+            logger.debug(F"ID: 0x35E {[ chr(can_buffer[i]) for i in range(len(can_buffer)) ]}")

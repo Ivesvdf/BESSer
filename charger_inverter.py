@@ -331,7 +331,7 @@ class BICChargerInverter:
                         self.__write_command(BICCommand.VOUT_SET, (int)(max_batt_voltage_V / self.__Vout_factor), 2)
                         self.__write_command(BICCommand.IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
                     else: # discharge
-                        self.__write_command(BICCommand.DIRECTION_CTRL, 1)
+                        self.__write_command(BICCommand.DIRECTION_CTRL, 1, 1)
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(min_batt_voltage_V / self.__Vout_factor), 2)
                         self.__write_command(BICCommand.REVERSE_IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
                 else:
@@ -339,7 +339,7 @@ class BICChargerInverter:
                     self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
 
                 if operation_requested != self.__operational:
-                    self.__write_command(BICCommand.OPERATION, 1 if operation_requested else 0)
+                    self.__write_command(BICCommand.OPERATION, 1 if operation_requested else 0, 1)
 
 
             time.sleep(5)
@@ -420,11 +420,10 @@ class BICChargerInverter:
         
         self.__requested_charge_power_W = charge_power_W
     
-    def __write_command(self, command:BICCommand, value:int, num_data_bytes:int = 4): 
+    def __write_command(self, command:BICCommand, value:int, num_data_bytes:int): 
         self.__write_state[command] = value
 
         for _ in range(self.__num_repeats):
-            value = to_twos_complement(value, 8*num_data_bytes)
             data = [ command.value & 0xFF, (command.value & 0xFF00) >> 8, (value & 0xFF), (value & 0xFF00) >> 8 ]
             self.__canbus.send(threadsafe_can.Message(arbitration_id=self.__command_arb_id, dlc=2+num_data_bytes, data=data, is_extended_id=True))
 
@@ -450,6 +449,6 @@ class BICChargerInverter:
         """Configure the BIC for bidirectional mode. Only needs to happen once (stored in flash). 
         Reboot after executing this command"""
 
-        self.__write_command(BICCommand.SYSTEM_CONFIG, 0x0003)
-        self.__write_command(BICCommand.BIDIRECTIONAL_CONFIG, 0x001)
+        self.__write_command(BICCommand.SYSTEM_CONFIG, 0x0003, 2)
+        self.__write_command(BICCommand.BIDIRECTIONAL_CONFIG, 0x001, 2)
         logger.warning("Commands set, please power off and on the BIC")
