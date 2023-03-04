@@ -202,8 +202,8 @@ class CurrentRegulator:
         # Calculate the integral
         self._integral = self._integral + error
 
-        MAX_INTEGRAL = 100
-        MIN_INTEGRAL = -100
+        MAX_INTEGRAL = 150
+        MIN_INTEGRAL = -150
 
         if self._integral > MAX_INTEGRAL:
             self._integral = MAX_INTEGRAL
@@ -352,12 +352,10 @@ class BICChargerInverter:
                 logger.error("Your BIC had to be reprogrammed for CAN communication. Please power off and on your inverter/charger and restart this software.")
                 time.sleep(1)
 
+        logger.info("Disabling operation before starting loop.")
+        self.__write_command(BICCommand.OPERATION, 0, 1)
 
         logger.info("Starting main communication loop")
-        prev_state = None
-
-        # Disable system to start with
-        self.__write_command(BICCommand.OPERATION, 0, 1)
 
         while not self.__receive_stop_event.is_set():
             cycle_time_start = time.time()
