@@ -1,8 +1,12 @@
 Readme
 ======
-Warning
--------
+Warning 1
+---------
 This software is without *any* warranty or guarantees, or worse. It may set your house on fire and kill your family. It is not finished, not tested and cannot be relied on to work.
+
+Warning 2
+---------
+The BIC2200 that's used as an inverter is not sufficiently certified for grid-tied usage in Europe. So you can only use this system as a grid-following device while in island-operation.
 
 Introduction
 ------------

@@ -44,3 +44,9 @@ battery_max_voltage = 53
 charger_inverter_device_id = 0
 charger_inverter_model_voltage = 48
 
+# Voltage above which the inverter will stop inverting to prevent overvoltage on the grid.
+# The correct setting for this depends on your physical location.
+charger_inverter_disconnect_invert_V = 253
+
+min_charge_power_W = 50
+min_invert_power_W = 100

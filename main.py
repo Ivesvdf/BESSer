@@ -67,10 +67,13 @@ class DeviationReason(enum.Enum):
     CHARGE_ABOVE_MAX_SOC = enum.auto()
     DISCHARGE_BELOW_MIN_SOC = enum.auto()
     INVERTER_POWER_LIMIT = enum.auto()
+    GRID_OVER_VOLTAGE = enum.auto()
+    REQUEST_BELOW_MIN_POWER = enum.auto()
 
 last_broadcast_time = 0
 last_broadcast_power_request_W = None
 last_status = None
+last_debug_info = None
 
 while True:
     protection_flags = battery.get_protection_flags() or set()
@@ -143,6 +146,7 @@ while True:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.ALARM_FLAG_SET)
 
+    # Reset charge and discharge due to SoC limits
     if power_request_W > 0 and (batt_soc_pct or 0) > soc_max:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.CHARGE_ABOVE_MAX_SOC)
@@ -156,6 +160,7 @@ while True:
     batt_max_charge_W = (batt_V or 0) * (batt_charge_A or 0)
     batt_max_discharge_W = (batt_V or 0)*(batt_discharge_A or 0)
 
+    # LLimit charge and discharge due to battery limits
     if power_request_W > batt_max_charge_W:
         power_request_W = batt_max_charge_W
         deviation_reasons.add(DeviationReason.BATTERY_CURRENT_LIMIT)
@@ -163,7 +168,8 @@ while True:
         power_request_W = batt_max_discharge_W
         deviation_reasons.add(DeviationReason.BATTERY_CURRENT_LIMIT)
 
-    if oldest_battery_receive_time_age > config.mqtt_heartbeat_interval_s:
+    # If the mqtt heartbeat interval is set, do not charge or discharge if it hasn't been received
+    if config.mqtt_heartbeat_interval_s != 0 and oldest_battery_receive_time_age > config.mqtt_heartbeat_interval_s:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_DATA_FROM_BATTERY)
 
@@ -173,6 +179,7 @@ while True:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.INVERTER_FAULT_SET)
 
+    # Limit charge and discharge power due to inverter limits
     charge_power_limit_W = charger_inverter.get_charge_power_limit_W()
     invert_power_limit_W = charger_inverter.get_invert_power_limit_W()
     if power_request_W > charge_power_limit_W:
@@ -182,14 +189,24 @@ while True:
         power_request_W = invert_power_limit_W
         deviation_reasons.add(DeviationReason.INVERTER_POWER_LIMIT)
 
+    inverter_dc_V = charger_inverter.get_Vout_V()
+    inverter_dc_A = charger_inverter.get_Iout_A()
+    inverter_ac_V = charger_inverter.get_Vin_V()
+
+    if power_request_W != 0 and -config.min_invert_power_W < power_request_W < config.min_charge_power_W:
+        power_request_W = 0
+        deviation_reasons.add(DeviationReason.REQUEST_BELOW_MIN_POWER)
+
+    # Do not invert when the AC net voltage is too high
+    if power_request_W < 0 and inverter_ac_V > config.charger_inverter_disconnect_invert_V: 
+        power_request_W = 0
+        deviation_reasons.add(DeviationReason.GRID_OVER_VOLTAGE)
 
     charger_inverter.set_battery_voltage_limits((batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
     charger_inverter.request_charge_discharge(power_request_W)
 
-    inverter_dc_V = charger_inverter.get_Vout_V()
-    inverter_dc_A = charger_inverter.get_Iout_A()
 
-    status = battery_dict = {
+    status = {
         "batt_V": batt_V,
         "batt_A": batt_A,
         "batt_T": batt_T,
@@ -208,23 +225,31 @@ while True:
         "power_request": power_request_W,
         'inverter_DC_V': inverter_dc_V,
         'inverter_temperature_1': charger_inverter.get_temperature_1(),
-        'inverter_AC_V': charger_inverter.get_Vin_V(),
+        'inverter_AC_V': inverter_ac_V,
         'inverter_DC_A': inverter_dc_A,
         'inverter_DC_VA': inverter_dc_V * inverter_dc_A if inverter_dc_V != None and inverter_dc_A != None else 0,
         'inverter_fault_flags': inverter_fault_flags,
         'inverter_system_status': charger_inverter.get_system_status(),
     }
 
+
+    def fix_dict(d):
+        return { str(k): v for k,v in d.items() } 
+    debug_info = { "inverter" : { 
+                "out" : fix_dict(charger_inverter.get_write_state()),
+                "in": fix_dict(charger_inverter.get_read_state()),
+                "last_cycle_time": charger_inverter.get_last_cycle_time_basic_s(),
+             }}
+
+
     now = time.time()
 
-    if (now - last_broadcast_time > config.mqtt_status_broadcast_interval_s) or (last_status != status): 
+    if (now - last_broadcast_time > config.mqtt_status_broadcast_interval_s) or (last_status != status) or (last_debug_info != debug_info): 
         last_broadcast_time = now
         last_status = status
+        last_debug_info = debug_info
         mqtt.broadcast_status(status)
-
-        def fix_dict(d):
-            return { str(k): v for k,v in d.items() } 
-        mqtt.broadcast_debug({ "inverter" : { "out" : fix_dict(charger_inverter.get_write_state()), "in": fix_dict(charger_inverter.get_read_state()) }})
+        mqtt.broadcast_debug(debug_info)
 
 
     time.sleep(1)
