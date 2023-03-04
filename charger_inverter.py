@@ -257,7 +257,7 @@ class BICChargerInverter:
         self.__current_regulator = CurrentRegulator(Kp=1.0, Ki=0.1, Kd=0.1)
         self.__cycle_time_basic_s = 0
 
-        self.__operational = False # initialize to true to immediately force set to false
+        self.__operational = False 
         self.__requested_charge_power_W = 0
         self.__can_control = None
 
@@ -266,9 +266,7 @@ class BICChargerInverter:
 
         self.__battery_voltage_limits = battery_voltage_limits_V
 
-        self.__Vout_limits = get_vout_adjustable_range(model_voltage)
         self.__Iout_limits = get_iout_adjustable_range(model_voltage)
-        self.__reverse_Vout_limits = get_reverse_vout_adjustable_range(model_voltage)
         self.__reverse_Iout_limits = get_reverse_iout_adjustable_range(model_voltage)
 
         self.__communication_thread = threading.Thread(target=self.__run, daemon=True)
@@ -405,6 +403,14 @@ class BICChargerInverter:
     
     def get_read_state(self):
         return dict(self.__read_state)
+    
+    def get_pid_state(self):
+        return { 
+            "Ki": self.__current_regulator.Ki,
+            "Kd": self.__current_regulator.Kd,
+            "Kp": self.__current_regulator.Kp,
+            "integral": self.__current_regulator._integral 
+            } 
     
     def request_until_okay(self, command, exit_condition):
         last_scale_request_time = 0

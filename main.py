@@ -239,6 +239,7 @@ while True:
                 "out" : fix_dict(charger_inverter.get_write_state()),
                 "in": fix_dict(charger_inverter.get_read_state()),
                 "last_cycle_time": charger_inverter.get_last_cycle_time_basic_s(),
+                "pid": charger_inverter.get_pid_state(),
              }}
 
 
