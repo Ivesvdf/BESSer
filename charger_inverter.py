@@ -184,11 +184,14 @@ def to_twos_complement(num: int, bits: int) -> int:
         return max_val + num
 
 class CurrentRegulator:
-    def __init__(self, Kp, Ki, Kd):
+    def __init__(self, Kp, Ki, Kd, Ki_min, Ki_max):
         # Define the PID gains
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
+
+        self.Ki_min = Ki_min
+        self.Ki_max = Ki_max
 
         # Define the variables
         self._last_error = 0
@@ -202,13 +205,10 @@ class CurrentRegulator:
         # Calculate the integral
         self._integral = self._integral + error
 
-        MAX_INTEGRAL = 150
-        MIN_INTEGRAL = -150
-
-        if self._integral > MAX_INTEGRAL:
-            self._integral = MAX_INTEGRAL
-        elif self._integral < MIN_INTEGRAL:
-            self._integral = MIN_INTEGRAL
+        if self._integral > self.Ki_max:
+            self._integral = self.Ki_max
+        elif self._integral < self.Ki_min:
+            self._integral = self.Ki_min
 
         # Calculate the derivative
         derivative = error - self._last_error
@@ -222,7 +222,8 @@ class CurrentRegulator:
         return output_voltage
 
 class BICChargerInverter:
-    def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage:int, battery_voltage_limits_V):
+    def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage:int, battery_voltage_limits_V, 
+                 PID_Ki, PID_Kp, PID_Kd, PID_Ki_min, PID_Ki_max):
         self.__canbus = can
         self.__canbus.add_receive_hook(self.__on_can_receive)
 
@@ -244,7 +245,6 @@ class BICChargerInverter:
         self.__Iout_factor = None
         self.__Vin_factor = None
         self.__temperature_1_factor = None
-        self.__Iin_factor = None
 
         self.__Vout_V = None
         self.__temperature_1 = None
@@ -254,7 +254,7 @@ class BICChargerInverter:
         self.__fault_flags = set()
         self.__system_status = set()
 
-        self.__current_regulator = CurrentRegulator(Kp=1.0, Ki=0.1, Kd=0.1)
+        self.__current_regulator = CurrentRegulator(Kp=PID_Kp, Ki=PID_Ki, Kd=PID_Kd, Ki_min=PID_Ki_min, Ki_max=PID_Ki_max)
         self.__cycle_time_basic_s = 0
 
         self.__operational = False 
@@ -284,6 +284,13 @@ class BICChargerInverter:
     
     def set_battery_voltage_limits(self, limits):
         self.__battery_voltage_limits = limits
+
+    def set_PID_Ki(self, val):
+        self.__current_regulator.Ki = val
+    def set_PID_Kp(self, val):
+        self.__current_regulator.Kp = val
+    def set_PID_Kd(self, val):
+        self.__current_regulator.Kd = val
 
     def get_Vout_V(self):
         return self.__Vout_V
@@ -325,9 +332,9 @@ class BICChargerInverter:
             target_A = 0
 
             # Respect limits
-            if target_current_A > 0 and target_V > max_batt_voltage_V:
+            if target_V > max_batt_voltage_V:
                 target_V = max_batt_voltage_V
-            elif target_current_A < 0 and target_V < min_batt_voltage_V:
+            elif target_V < min_batt_voltage_V:
                 target_V = min_batt_voltage_V
 
             return target_A, target_V
@@ -382,7 +389,7 @@ class BICChargerInverter:
                     self.__write_command(BICCommand.OPERATION, 1 if operation_requested else 0, 1)
 
                 if operation_requested:
-                    if instructed_current_A > 0 or target_voltage_V > self.__Vout_V: # charge
+                    if self.__requested_current_A > 0: # charge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 0, 1)
                         self.__write_command(BICCommand.VOUT_SET, (int)(target_voltage_V / self.__Vout_factor), 2)
                         self.__write_command(BICCommand.IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
@@ -441,7 +448,6 @@ class BICChargerInverter:
             self.__Iout_factor = parse_factor((data & 0xF0) >> 4)
             self.__Vin_factor = parse_factor((data & 0x0F00) >> 8)
             self.__temperature_1_factor = parse_factor((data & 0x0F0000) >> 16)
-            self.__Iin_factor = parse_factor((data & 0x0F000000) >> 24)
         elif command == BICCommand.OPERATION:
             self.__operational = (data == 1)
         elif command == BICCommand.READ_VOUT:

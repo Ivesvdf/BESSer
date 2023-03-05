@@ -17,13 +17,22 @@ mqtt = mqtt_interface.MqttInterface(config.mqtt_connect_args, config.mqtt_creden
 charger_inverter = charger_inverter.BICChargerInverter(inverter_can_interface, 
                                                        config.charger_inverter_device_id, 
                                                        config.charger_inverter_model_voltage, 
-                                                       (config.battery_min_voltage, config.battery_max_voltage))
+                                                       (config.battery_min_voltage, config.battery_max_voltage),
+                                                       config.charger_inverter_PID_Ki, 
+                                                       config.charger_inverter_PID_Kp, 
+                                                       config.charger_inverter_PID_Kd,
+                                                       config.charger_inverter_PID_Ki_min,
+                                                       config.charger_inverter_PID_Ki_max)
 battery = battery.PylontechCANBattery(battery_can_interface)
 
 mqtt_requested_power_W = None
 battery_requested_power_W = None 
 min_soc_override = None
-max_soc_override = None 
+max_soc_override = None
+
+charger_inverter_Ki = None
+charger_inverter_Kp = None
+charger_inverter_Kd = None 
 
 def on_mqtt_power_request(power_W):
     global mqtt_requested_power_W
@@ -46,10 +55,25 @@ def on_max_soc(soc):
     global max_soc_override
     max_soc_override = soc
 
+def on_Ki(val):
+    global charger_inverter_Ki
+    charger_inverter_Ki = val
+
+def on_Kp(val):
+    global charger_inverter_Kp
+    charger_inverter_Kp = val
+
+def on_Kd(val):
+    global charger_inverter_Kd
+    charger_inverter_Kd = val
+
 mqtt.on_power_request = on_mqtt_power_request
 mqtt.on_heartbeat = on_hearbeat
 mqtt.on_min_soc = on_min_soc
 mqtt.on_max_soc = on_max_soc
+mqtt.on_Ki = on_Ki
+mqtt.on_Kp = on_Kp
+mqtt.on_Kd = on_Kd
 
 class DeviationReason(enum.Enum):
     CHARGE_ENABLE_NOT_SET = enum.auto()
@@ -192,6 +216,7 @@ while True:
     inverter_dc_V = charger_inverter.get_Vout_V()
     inverter_dc_A = charger_inverter.get_Iout_A()
     inverter_ac_V = charger_inverter.get_Vin_V()
+    inverter_temp_degC = charger_inverter.get_temperature_1()
 
     if power_request_W != 0 and -config.min_invert_power_W < power_request_W < config.min_charge_power_W:
         power_request_W = 0
@@ -201,6 +226,18 @@ while True:
     if power_request_W < 0 and inverter_ac_V > config.charger_inverter_disconnect_invert_V: 
         power_request_W = 0
         deviation_reasons.add(DeviationReason.GRID_OVER_VOLTAGE)
+
+    if charger_inverter_Ki != None:
+        charger_inverter.set_PID_Ki(charger_inverter_Ki)
+        charger_inverter_Ki = None 
+
+    if charger_inverter_Kp != None:
+        charger_inverter.set_PID_Kp(charger_inverter_Kp)
+        charger_inverter_Kp = None 
+
+    if charger_inverter_Kd != None:
+        charger_inverter.set_PID_Kd(charger_inverter_Kd)
+        charger_inverter_Kd = None
 
     charger_inverter.set_battery_voltage_limits((batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
     charger_inverter.request_charge_discharge(power_request_W)
@@ -223,11 +260,11 @@ while True:
         "max_soc_override": max_soc_override,
         "deviation_reasons": deviation_reasons,
         "power_request": power_request_W,
-        'inverter_DC_V': inverter_dc_V,
-        'inverter_temperature_1': charger_inverter.get_temperature_1(),
-        'inverter_AC_V': inverter_ac_V,
-        'inverter_DC_A': inverter_dc_A,
-        'inverter_DC_VA': inverter_dc_V * inverter_dc_A if inverter_dc_V != None and inverter_dc_A != None else 0,
+        'inverter_DC_V': round(inverter_dc_V, 3) if inverter_dc_V != None else None,
+        'inverter_temperature_1': round(inverter_temp_degC, 3) if inverter_temp_degC != None else None,
+        'inverter_AC_V': round(inverter_ac_V, 3) if inverter_ac_V != None else None,
+        'inverter_DC_A': round(inverter_dc_A, 3) if inverter_dc_V != None else None,
+        'inverter_DC_VA': round(inverter_dc_V * inverter_dc_A, 3) if inverter_dc_V != None and inverter_dc_A != None else 0,
         'inverter_fault_flags': inverter_fault_flags,
         'inverter_system_status': charger_inverter.get_system_status(),
     }

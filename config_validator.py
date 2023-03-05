@@ -41,4 +41,10 @@ assert isinstance(config.charger_inverter_disconnect_invert_V, int), "config.cha
 assert isinstance(config.min_charge_power_W, int), "config.min_charge_power_W is not of type int"
 assert isinstance(config.min_invert_power_W, int), "config.min_invert_power_W is not of type int"
 
+assert isinstance(config.charger_inverter_PID_Ki, float), "config.charger_inverter_PID_Ki is not of type float"
+assert isinstance(config.charger_inverter_PID_Kp, float), "config.charger_inverter_PID_Kp is not of type float"
+assert isinstance(config.charger_inverter_PID_Kd, float), "config.charger_inverter_PID_Kd is not of type float"
+assert isinstance(config.charger_inverter_PID_Ki_max, float), "config.charger_inverter_PID_Ki_max is not of type float"
+assert isinstance(config.charger_inverter_PID_Ki_min, float), "config.charger_inverter_PID_Ki_min is not of type float"
+
 assert config.charger_inverter_model_voltage in [12,24,48,96], "config.charger_inverter_model_voltage bust be a valid BIC model voltage, like 48"

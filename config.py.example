@@ -48,5 +48,11 @@ charger_inverter_model_voltage = 48
 # The correct setting for this depends on your physical location.
 charger_inverter_disconnect_invert_V = 253
 
+charger_inverter_PID_Ki = 0.0003 
+charger_inverter_PID_Kp = 0.01
+charger_inverter_PID_Kd = 0.00001
+charger_inverter_PID_Ki_max = 150.0
+charger_inverter_PID_Ki_min = -150.0
+
 min_charge_power_W = 50
 min_invert_power_W = 100
