@@ -4,6 +4,7 @@ import json
 from loguru import logger
 import dsmr_parser
 
+
 class DsmrDataEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, dsmr_parser.objects.CosemObject):
@@ -21,9 +22,10 @@ class DsmrDataEncoder(json.JSONEncoder):
             d["value"] = obj.value
             return d
         if isinstance(obj, dsmr_parser.objects.MbusDevice):
-            return { k:v for (k,v) in obj }
+            return {k: v for (k, v) in obj}
         return super(DsmrDataEncoder, self).default(obj)
-        
+
+
 class MqttBroadcaster:
     def __init__(self, connect_args, credentials, topic):
         # Create a client instance
@@ -37,14 +39,14 @@ class MqttBroadcaster:
 
         # Start the network loop
         self.__client.loop_start()
-        
+
         if credentials != None:
             self.__client.username_pw_set(*credentials)
 
         self.__client.connect(*connect_args)
 
-
     # Define callback functions for connecting, publishing, and receiving messages
+
     def on_connect(self, client, userdata, flags, rc):
         logger.info(f"Connected with result code {rc}")
 
@@ -55,10 +57,9 @@ class MqttBroadcaster:
         logger.info(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
 
     def broadcast(self, message):
-        d = {} 
+        d = {}
     #    for (key, entry) in message:
    #         d[key] = entry.values[0]
-        mapped = { k:v for (k,v) in message}
+        mapped = {k: v for (k, v) in message}
         json_msg = json.dumps(mapped, cls=DsmrDataEncoder)
         self.__client.publish(self.__topic, json_msg)
-    
