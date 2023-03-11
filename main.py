@@ -184,7 +184,7 @@ while True:
     batt_max_charge_W = (batt_V or 0) * (batt_charge_A or 0)
     batt_max_discharge_W = (batt_V or 0)*(batt_discharge_A or 0)
 
-    # LLimit charge and discharge due to battery limits
+    # Limit charge and discharge due to battery limits
     if power_request_W > batt_max_charge_W:
         power_request_W = batt_max_charge_W
         deviation_reasons.add(DeviationReason.BATTERY_CURRENT_LIMIT)

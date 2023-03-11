@@ -247,6 +247,7 @@ class BICChargerInverter:
         self.__temperature_1_factor = None
 
         self.__Vout_V = None
+        self.__Vout_rest_V = None
         self.__temperature_1 = None
         self.__Vin_V = None
         self.__Iout_A = None
@@ -328,7 +329,7 @@ class BICChargerInverter:
             return target_current_A, extreme_voltage_V
         else:
             # outside of constant current range, use voltage control 
-            target_V = self.__Vout_V + self.__current_regulator.regulate_current(target_current_A, self.__Iout_A)
+            target_V = self.__Vout_rest_V + self.__current_regulator.regulate_current(target_current_A, self.__Iout_A)
             target_A = 0
 
             # Respect limits
@@ -452,6 +453,9 @@ class BICChargerInverter:
             self.__operational = (data == 1)
         elif command == BICCommand.READ_VOUT:
             self.__Vout_V = data * self.__Vout_factor
+
+            if self.__operational == 0:
+                self.__Vout_rest_V = self.__Vout_V
         elif command == BICCommand.READ_TEMPERATURE_1:
             self.__temperature_1 = from_twos_complement(data, 16) * self.__temperature_1_factor # todo support negative temperatures!
         elif command == BICCommand.READ_VIN:
