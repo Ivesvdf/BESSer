@@ -149,7 +149,7 @@ def get_reverse_vout_adjustable_range(model_voltage_V):
 
 
 def get_iout_adjustable_range(model_voltage_V):
-    # Define the REVERSE_VOUT_SET portion of the table as a list of dictionaries, one per row
+    # Define the VOUT_SET portion of the table as a list of dictionaries, one per row
     iout_table = [
         {"model": 12, "adjustable range": (36, 198), "tolerance": 4, "default": 198},
         {"model": 24, "adjustable range": (18, 99), "tolerance": 2, "default": 99},
@@ -223,114 +223,175 @@ class BICChargerInverter:
         self.__command_arb_id = 0x000C0300 | device_id
         self.__receive_broadcast_arb_id = 0x000C03FF
 
+        self.__model_voltage = model_voltage
+        self.__battery_voltage_limits = battery_voltage_limits_V
+        self.__Ki = Ki
+
         self.__last_command_time = 0
         self.__command_interval_s = 0.025
         self.__num_repeats = 3
         self.__read_state = {}
         self.__write_state = {}
 
+        self.__operational = False
+        self.__can_control = None
+
+        self.__Vin_factor = None
         self.__Vout_factor = None
         self.__Iout_factor = None
-        self.__Vin_factor = None
-        self.__temperature_1_factor = None
+        self.__temperature_factor = None
 
-        self.__Vout_V = None
-        self.__temperature_1 = None
         self.__Vin_V = None
+        self.__Vout_V = None
         self.__Iout_A = None
+        self.__temperature_C = None
 
         self.__fault_flags = set()
         self.__system_status = set()
 
-        # Define the PID gains
-        self.__Ki = Ki
-        self.__integral = 0
-
         self.__cycle_time_basic_s = 0
 
-        self.__operational = False
-        self.__requested_charge_power_W = 0
-        self.__can_control = None
-
-        self.__invert_power_limit_W = -1725
-        self.__charge_power_limit_W = 2160
-
-        self.__battery_voltage_limits = battery_voltage_limits_V
-
-        self.__Iout_limits = get_iout_adjustable_range(model_voltage)
-        self.__reverse_Iout_limits = get_reverse_iout_adjustable_range(model_voltage)
+        self.__target_power_W = 0
+        self.__target_voltage_V = 0
+        self.__target_current_A = 0
 
         self.__communication_thread = threading.Thread(target=self.__run, daemon=True)
         self.__receive_stop_event = threading.Event()
         self.__communication_thread.start()
 
-    def get_last_cycle_time_basic_s(self):
-        return self.__cycle_time_basic_s
+    @property
+    def Charge_Power_Limit_W(self) -> int:
+        return -1725
 
-    def get_charge_power_limit_W(self):
-        return self.__charge_power_limit_W
+    @property
+    def Discharge_Power_Limit_W(self) -> int:
+        return 2160
 
-    def get_invert_power_limit_W(self):
-        return self.__invert_power_limit_W
+    @property
+    def Charge_Iout_Limits_A(self):
+        return get_iout_adjustable_range(self.__model_voltage)
 
-    def set_battery_voltage_limits(self, limits):
-        self.__battery_voltage_limits = limits
+    @property
+    def Discharge_Iout_Limits_A(self):
+        return get_reverse_iout_adjustable_range(self.__model_voltage)
 
-    def set_PID_Ki(self, val):
-        self.__current_regulator.Ki = val
+    @property
+    def Battery_Voltage_Limits_V(self):
+        return self.__battery_voltage_limits_V
 
-    def get_Vout_V(self):
-        return self.__Vout_V
+    @Battery_Voltage_Limits_V.setter
+    def Battery_Voltage_Limits_V(self, value):
+        self.__battery_voltage_limits_V = value
 
-    def get_temperature_1(self):
-        return self.__temperature_1
-
-    def get_Vin_V(self):
+    @property
+    def Vin_V(self) -> float:
         return self.__Vin_V
 
-    def get_Iout_A(self):
+    @property
+    def Vout_V(self) -> float:
+        return self.__Vout_V
+
+    @property
+    def Iout_A(self) -> float:
         return self.__Iout_A
 
-    def get_fault_flags(self):
+    @property
+    def Current_Power_W(self) -> int:
+        return (self.__Vout_V * self.__Iout_A) if (self.__Vout_V != None) and (self.__Iout_A != None) else None
+
+    @property
+    def Temperature_C(self) -> float:
+        return self.__temperature_C
+
+    @property
+    def Fault_Flags(self) -> set():
         return set(self.__fault_flags)
 
-    def get_system_status(self):
+    @property
+    def System_Status(self) -> set():
         return set(self.__system_status)
 
-    def _calculate_setpoint(self, target_power_W):
-        target_current_A = target_power_W / self.__Vout_V
+    @property
+    def Operational(self) -> bool:
+        return set(self.__operational)
 
-        (min_batt_voltage_V, max_batt_voltage_V) = self.__battery_voltage_limits
+    @property
+    def Target_Voltage_V(self) -> float:
+        return self.__target_voltage_V
 
-        if target_current_A > 0:
-            # charge
-            lower_limit_A, upper_limit_A = self.__Iout_limits
-            target_voltage_V = max_batt_voltage_V
+    @property
+    def Target_Current_A(self) -> float:
+        return self.__target_current_A
+
+    @property
+    def Target_Power_W(self) -> int:
+        return self.__target_power_W
+
+    @Target_Power_W.setter
+    def Target_Power_W(self, value: int):
+        if not (self.Charge_Power_Limit_W <= value <= self.Discharge_Power_Limit_W):
+            self.__target_power_W = 0
+            raise ValueError(f"Target power must fall between {self.Charge_Power_Limit_W} and {self.Discharge_Power_Limit_W}.")
+
+        if -100 < value < 100:
+            self.__target_power_W = 0
         else:
-            # discharge
-            lower_limit_A, upper_limit_A = self.__reverse_Iout_limits
-            target_voltage_V = min_batt_voltage_V
+            self.__target_power_W = value
 
-        if lower_limit_A <= target_current_A <= upper_limit_A:
+    @property
+    def Ki(self) -> float:
+        return self.__Ki
+
+    @Ki.setter
+    def Ki(self, value: float):
+        if value <= 0:
+            raise ValueError("Ki must be greater than 0")
+
+        self.__Ki = value
+
+    @property
+    def Last_cycle_time_basic_s(self):
+        return self.__cycle_time_basic_s
+
+    def __calculate_setpoint(self):
+        (min_batt_voltage_V, max_batt_voltage_V) = self.__battery_voltage_limits
+        (min_charge_current_limit_A, max_charge_current_limit_A) = self.Charge_Iout_Limits_A
+        (min_discharge_current_limit_A, max_discharge_current_limit_A) = self.Discharge_Iout_Limits_A
+
+        self.__target_current_A = self.__target_power_W / self.__Vout_V
+
+        if max_discharge_current_limit_A < self.__target_current_A < min_charge_current_limit_A:
             # within the current control range, use constant current
             self.__power_control_current_mode = True
-            return target_current_A, target_voltage_V
+
+            if self.__target_current_A > 0:
+                # charge
+                if self.__target_current_A > max_charge_current_limit_A:
+                    self.__target_current_A = max_charge_current_limit_A
+
+                self.__target_voltage_V = max_batt_voltage_V
+            else:
+                # discharge
+                if self.__target_current_A < min_discharge_current_limit_A:
+                    self.__target_current_A = min_discharge_current_limit_A
+
+                self.__target_voltage_V = min_batt_voltage_V
         else:
             # outside of constant current range, use voltage control
             if self.__power_control_current_mode:
-                self.__integral = self.__Vout_V
+                self.__power_control_current_mode = False
+                self.__target_current_A = 0
+                self.__target_voltage_V = self.__Vout_V
 
-            self.__power_control_current_mode = False
+            self.__target_voltage_V += (self.__Ki * (self.__target_current_A - self.__Iout_A))
 
-            # Calculate the integral
-            self.__integral = self.__integral + (self.__Ki * (target_current_A - self.__Iout_A))
+            if self.__target_voltage_V < min_batt_voltage_V:
+                self.__target_voltage_V = min_batt_voltage_V
+            elif self.__target_voltage_V > max_batt_voltage_V:
+                self.__target_voltage_V = max_batt_voltage_V
 
-            if self.__integral < min_batt_voltage_V:
-                self.__integral = min_batt_voltage_V
-            elif self.__integral > max_batt_voltage_V:
-                self.__integral = max_batt_voltage_V
-
-            return 0, self.__integral
+        logger.info(f"Will request charger/inverter for charge current {self.__target_current_A} \
+                        with target voltage {self.__target_voltage_V}")
 
     def __run(self):
         logger.info("Waiting for scaling factors")
@@ -367,33 +428,27 @@ class BICChargerInverter:
             self.__start_read_command(BICCommand.FAULT_STATUS)
             self.__start_read_command(BICCommand.SYSTEM_STATUS)
 
-            if self.__Vout_V == None or self.__Iout_A == None or self.__Vin_V == None or self.__temperature_1 == None:
+            if self.__Vout_V == None or self.__Iout_A == None or self.__Vin_V == None or self.__temperature_C == None:
                 logger.info("Still starting, will not execute")
             else:
-                if len(self.__fault_flags) > 0:
+                if len(self.Fault_Flags) > 0:
                     operation_requested = 0
 
-                (instructed_current_A, target_voltage_V) = self._calculate_setpoint(self.__requested_charge_power_W)
+                self.__calculate_setpoint()
 
-                logger.info(
-                    f"Will request charger/inverter for charge current {instructed_current_A} \
-                        with target voltage {target_voltage_V}")
-
-                operation_requested = self.__requested_charge_power_W != 0
+                operation_requested = self.__target_power_W != 0
                 if operation_requested != self.__operational:
                     self.__write_command(BICCommand.OPERATION, 1 if operation_requested else 0, 1)
 
                 if operation_requested:
-                    if self.__requested_current_A > 0:  # charge
+                    if self.__target_current_A > 0:  # charge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 0, 1)
-                        self.__write_command(BICCommand.VOUT_SET, (int)(target_voltage_V / self.__Vout_factor), 2)
-                        self.__write_command(BICCommand.IOUT_SET, (int)(instructed_current_A / self.__Iout_factor), 2)
+                        self.__write_command(BICCommand.VOUT_SET, (int)(self.__target_voltage_V / self.__Vout_factor), 2)
+                        self.__write_command(BICCommand.IOUT_SET, (int)(self.__target_current_A / self.__Iout_factor), 2)
                     else:  # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1, 1)
-                        self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)
-                                             (target_voltage_V / self.__Vout_factor), 2)
-                        self.__write_command(BICCommand.REVERSE_IOUT_SET, to_twos_complement(
-                            (int)(instructed_current_A / self.__Iout_factor), 16), 2)
+                        self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(self.__target_voltage_V / self.__Vout_factor), 2)
+                        self.__write_command(BICCommand.REVERSE_IOUT_SET, to_twos_complement((int)(self.__target_current_A / self.__Iout_factor), 16), 2)
                 else:
                     self.__write_command(BICCommand.IOUT_SET, 0, 2)
                     self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
@@ -407,12 +462,6 @@ class BICChargerInverter:
 
     def get_read_state(self):
         return dict(self.__read_state)
-
-    def get_pid_state(self):
-        return {
-            "Ki": self.__Ki,
-            "integral": self.__integral
-        }
 
     def request_until_okay(self, command, exit_condition):
         last_scale_request_time = 0
@@ -437,19 +486,17 @@ class BICChargerInverter:
             self.__system_status = parse_flags(SystemStatusFlags, data)
         elif command == BICCommand.SYSTEM_CONFIG:
             self.__can_control = (data & 1) != 0
-
         elif command == BICCommand.SCALING_FACTOR:
             self.__Vout_factor = parse_factor(data & 0x0F)
             self.__Iout_factor = parse_factor((data & 0xF0) >> 4)
             self.__Vin_factor = parse_factor((data & 0x0F00) >> 8)
-            self.__temperature_1_factor = parse_factor((data & 0x0F0000) >> 16)
+            self.__temperature_factor = parse_factor((data & 0x0F0000) >> 16)
         elif command == BICCommand.OPERATION:
             self.__operational = (data == 1)
         elif command == BICCommand.READ_VOUT:
             self.__Vout_V = data * self.__Vout_factor
         elif command == BICCommand.READ_TEMPERATURE_1:
-            # todo support negative temperatures!
-            self.__temperature_1 = from_twos_complement(data, 16) * self.__temperature_1_factor
+            self.__temperature_C = from_twos_complement(data, 16) * self.__temperature_factor
         elif command == BICCommand.READ_VIN:
             self.__Vin_V = data * self.__Vin_factor
         elif command == BICCommand.READ_IOUT:
@@ -475,12 +522,6 @@ class BICChargerInverter:
                 self.__on_response_received(command, data)
         except:
             logger.exception("Unknown BIC response received")
-
-    def request_charge_discharge(self, charge_power_W: float):
-        """Request power to be put into the battery (if argument is positive),
-        or drawn from the battery by the inverter (if argument is negative)."""
-
-        self.__requested_charge_power_W = charge_power_W
 
     def __write_command(self, command: BICCommand, value: int, num_data_bytes: int):
         self.__write_state[command] = value

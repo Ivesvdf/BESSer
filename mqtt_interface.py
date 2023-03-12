@@ -24,8 +24,6 @@ class MqttInterface:
         self.on_max_soc = None
         self.on_heartbeat = None
         self.on_Ki = None
-        self.on_Kp = None
-        self.on_Kd = None
         self.prefix = prefix
 
         # Start the network loop
@@ -41,8 +39,6 @@ class MqttInterface:
         self.__min_soc_topic = f"{self.prefix}/min_soc"
         self.__max_soc_topic = f"{self.prefix}/max_soc"
         self.__Ki_topic = f"{self.prefix}/charger_inverter_PID_Ki"
-        self.__Kp_topic = f"{self.prefix}/charger_inverter_PID_Kp"
-        self.__Kd_topic = f"{self.prefix}/charger_inverter_PID_Kd"
 
     # Define callback functions for connecting, publishing, and receiving messages
     def on_connect(self, client: mqtt.Client, userdata, flags, rc):
@@ -58,8 +54,6 @@ class MqttInterface:
         subscribe(self.__min_soc_topic)
         subscribe(self.__max_soc_topic)
         subscribe(self.__Ki_topic)
-        subscribe(self.__Kp_topic)
-        subscribe(self.__Kd_topic)
 
     def on_publish(self, client, userdata, mid):
         logger.info(f"Message published with ID {mid}: {userdata}")
@@ -91,16 +85,10 @@ class MqttInterface:
                 self.on_heartbeat()
         elif msg.topic == self.__min_soc_topic:
             self.__handle_int(self.__min_soc_topic, self.on_min_soc, msg)
-
         elif msg.topic == self.__max_soc_topic:
             self.__handle_int(self.__max_soc_topic, self.on_max_soc, msg)
-
         elif msg.topic == self.__Ki_topic:
             self.__handle_float(self.__Ki_topic, self.on_Ki, msg)
-        elif msg.topic == self.__Kp_topic:
-            self.__handle_float(self.__Kp_topic, self.on_Kp, msg)
-        elif msg.topic == self.__Kd_topic:
-            self.__handle_float(self.__Kd_topic, self.on_Kd, msg)
 
     def broadcast_status(self, status):
         self.__client.publish(f"{self.prefix}/status", json.dumps(status, cls=SetEncoder))

@@ -125,7 +125,7 @@ while True:
     batt_soc_pct = battery.get_batt_soc_pct()
     batt_soh_pct = battery.get_batt_soh_pct()
 
-    inverter_fault_flags = charger_inverter.get_fault_flags()
+    inverter_fault_flags = charger_inverter.Fault_Flags
 
     if power_request_W > 0 and RequestFlags.CHARGE_ENABLE not in request_flags:
         power_request_W = max(0, power_request_W)
@@ -199,8 +199,8 @@ while True:
         deviation_reasons.add(DeviationReason.INVERTER_FAULT_SET)
 
     # Limit charge and discharge power due to inverter limits
-    charge_power_limit_W = charger_inverter.get_charge_power_limit_W()
-    invert_power_limit_W = charger_inverter.get_invert_power_limit_W()
+    charge_power_limit_W = charger_inverter.Charge_Power_Limit_W
+    invert_power_limit_W = charger_inverter.Discharge_Power_Limit_W
     if power_request_W > charge_power_limit_W:
         power_request_W = charge_power_limit_W
         deviation_reasons.add(DeviationReason.INVERTER_POWER_LIMIT)
@@ -208,27 +208,27 @@ while True:
         power_request_W = invert_power_limit_W
         deviation_reasons.add(DeviationReason.INVERTER_POWER_LIMIT)
 
-    inverter_dc_V = charger_inverter.get_Vout_V()
-    inverter_dc_A = charger_inverter.get_Iout_A()
-    inverter_ac_V = charger_inverter.get_Vin_V()
-    inverter_temp_degC = charger_inverter.get_temperature_1()
+    inverter_dc_V = charger_inverter.Vout_V
+    inverter_dc_A = charger_inverter.Iout_A
+    inverter_ac_V = charger_inverter.Vin_V
+    inverter_temp_degC = charger_inverter.Temperature_C
+    inverter_dc_VA = charger_inverter.Current_Power_W
 
-    if power_request_W != 0 and -config.min_invert_power_W < power_request_W < config.min_charge_power_W:
-        power_request_W = 0
-        deviation_reasons.add(DeviationReason.REQUEST_BELOW_MIN_POWER)
+    # if power_request_W != 0 and -config.min_invert_power_W < power_request_W < config.min_charge_power_W:
+    #    power_request_W = 0
+    #    deviation_reasons.add(DeviationReason.REQUEST_BELOW_MIN_POWER)
 
     # Do not invert when the AC net voltage is too high
-    if power_request_W < 0 and inverter_ac_V > config.charger_inverter_disconnect_invert_V:
-        power_request_W = 0
-        deviation_reasons.add(DeviationReason.GRID_OVER_VOLTAGE)
+    # if power_request_W < 0 and inverter_ac_V > config.charger_inverter_disconnect_invert_V:
+    #    power_request_W = 0
+    #    deviation_reasons.add(DeviationReason.GRID_OVER_VOLTAGE)
 
     if charger_inverter_Ki != None:
-        charger_inverter.set_PID_Ki(charger_inverter_Ki)
+        charger_inverter.Ki = charger_inverter_Ki
         charger_inverter_Ki = None
 
-    charger_inverter.set_battery_voltage_limits(
-        (batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
-    charger_inverter.request_charge_discharge(power_request_W)
+    charger_inverter.Battery_Voltage_Limits_V = (batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage)
+    charger_inverter.Target_Power_W = power_request_W
 
     status = {
         "batt_V": batt_V,
@@ -251,9 +251,9 @@ while True:
         'inverter_temperature_1': round(inverter_temp_degC, 3) if inverter_temp_degC != None else None,
         'inverter_AC_V': round(inverter_ac_V, 3) if inverter_ac_V != None else None,
         'inverter_DC_A': round(inverter_dc_A, 3) if inverter_dc_V != None else None,
-        'inverter_DC_VA': round(inverter_dc_V * inverter_dc_A, 3) if inverter_dc_V != None and inverter_dc_A != None else 0,
+        'inverter_DC_VA': round(inverter_dc_VA, 3) if inverter_dc_VA != None else None,
         'inverter_fault_flags': inverter_fault_flags,
-        'inverter_system_status': charger_inverter.get_system_status(),
+        'inverter_system_status': charger_inverter.System_Status,
     }
 
     def fix_dict(d):
@@ -261,8 +261,7 @@ while True:
     debug_info = {"inverter": {
         "out": fix_dict(charger_inverter.get_write_state()),
         "in": fix_dict(charger_inverter.get_read_state()),
-        "last_cycle_time": charger_inverter.get_last_cycle_time_basic_s(),
-        "pid": charger_inverter.get_pid_state(),
+        "last_cycle_time": charger_inverter.Last_cycle_time_basic_s
     }}
 
     now = time.time()
