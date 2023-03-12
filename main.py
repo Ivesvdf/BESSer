@@ -18,7 +18,6 @@ charger_inverter = charger_inverter.BICChargerInverter(inverter_can_interface,
                                                        config.charger_inverter_device_id,
                                                        config.charger_inverter_model_voltage,
                                                        (config.battery_min_voltage, config.battery_max_voltage),
-                                                       config.charger_inverter_PID_Kp,
                                                        config.charger_inverter_PID_Ki,
                                                        config.charger_inverter_PID_Ki_min,
                                                        config.charger_inverter_PID_Ki_max)

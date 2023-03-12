@@ -210,11 +210,9 @@ def to_twos_complement(num: int, bits: int) -> int:
 
 
 class CurrentRegulator:
-    def __init__(self, Kp, Ki, Ki_min, Ki_max):
+    def __init__(self, Ki, Ki_min, Ki_max):
         # Define the PID gains
-        self.Kp = Kp
         self.Ki = Ki
-
         self.Ki_min = Ki_min
         self.Ki_max = Ki_max
 
@@ -235,7 +233,7 @@ class CurrentRegulator:
             self._integral = self.Ki_min
 
         # Calculate the output voltage
-        output_voltage = self.Kp * error + self.Ki * self._integral
+        output_voltage = self.Ki * self._integral
 
         # Save the last error
         self._last_error = error
@@ -245,7 +243,7 @@ class CurrentRegulator:
 
 class BICChargerInverter:
     def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage: int,
-                 battery_voltage_limits_V, PID_Kp, PID_Ki, PID_Ki_min, PID_Ki_max):
+                 battery_voltage_limits_V, PID_Ki, PID_Ki_min, PID_Ki_max):
         self.__canbus = can
         self.__canbus.add_receive_hook(self.__on_can_receive)
 
@@ -276,7 +274,7 @@ class BICChargerInverter:
         self.__fault_flags = set()
         self.__system_status = set()
 
-        self.__current_regulator = CurrentRegulator(Kp=PID_Kp, Ki=PID_Ki, Ki_min=PID_Ki_min, Ki_max=PID_Ki_max)
+        self.__current_regulator = CurrentRegulator(Ki=PID_Ki, Ki_min=PID_Ki_min, Ki_max=PID_Ki_max)
         self.__cycle_time_basic_s = 0
 
         self.__operational = False
@@ -309,9 +307,6 @@ class BICChargerInverter:
 
     def set_PID_Ki(self, val):
         self.__current_regulator.Ki = val
-
-    def set_PID_Kp(self, val):
-        self.__current_regulator.Kp = val
 
     def get_Vout_V(self):
         return self.__Vout_V
@@ -439,7 +434,6 @@ class BICChargerInverter:
 
     def get_pid_state(self):
         return {
-            "Kp": self.__current_regulator.Kp,
             "Ki": self.__current_regulator.Ki,
             "integral": self.__current_regulator._integral
         }
