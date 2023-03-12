@@ -199,16 +199,6 @@ while True:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.INVERTER_FAULT_SET)
 
-    # Limit charge and discharge power due to inverter limits
-    charge_power_limit_W = charger_inverter.Charge_Power_Limit_W
-    invert_power_limit_W = charger_inverter.Discharge_Power_Limit_W
-    if power_request_W > charge_power_limit_W:
-        power_request_W = charge_power_limit_W
-        deviation_reasons.add(DeviationReason.INVERTER_POWER_LIMIT)
-    elif power_request_W < invert_power_limit_W:
-        power_request_W = invert_power_limit_W
-        deviation_reasons.add(DeviationReason.INVERTER_POWER_LIMIT)
-
     inverter_dc_V = charger_inverter.Vout_V
     inverter_dc_A = charger_inverter.Iout_A
     inverter_ac_V = charger_inverter.Vin_V
@@ -253,7 +243,10 @@ while True:
     debug_info = {"inverter": {
         "out": fix_dict(charger_inverter.get_write_state()),
         "in": fix_dict(charger_inverter.get_read_state()),
-        "last_cycle_time": charger_inverter.Last_cycle_time_basic_s
+        "last_cycle_time": charger_inverter.Last_cycle_time_basic_s,
+        "target_voltage": charger_inverter.Target_Voltage_V,
+        "target_current": charger_inverter.Target_Current_A,
+        "target_power": charger_inverter.Target_Power_W
     }}
 
     now = time.time()

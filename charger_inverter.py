@@ -227,6 +227,7 @@ class BICChargerInverter:
         self.__model_voltage = model_voltage
         self.__battery_voltage_limits = battery_voltage_limits_V
         self.__Ki = Ki
+        self.__power_control_current_mode = True
         self.__disconnect_invert_V = disconnect_invert_V
 
         self.__last_command_time = 0
@@ -331,11 +332,11 @@ class BICChargerInverter:
 
     @Target_Power_W.setter
     def Target_Power_W(self, value: int):
-        if not (self.Charge_Power_Limit_W <= value <= self.Discharge_Power_Limit_W):
-            self.__target_power_W = 0
-            raise ValueError(f"Target power must fall between {self.Charge_Power_Limit_W} and {self.Discharge_Power_Limit_W}.")
-
-        if -100 < value < 100:
+        if value < self.Charge_Power_Limit_W:
+            self.__target_power_W = self.Charge_Power_Limit_W
+        elif value > self.Discharge_Power_Limit_W:
+            self.__target_power_W = self.Discharge_Power_Limit_W
+        elif -100 < value < 100:
             self.__target_power_W = 0
         else:
             self.__target_power_W = value
@@ -363,6 +364,23 @@ class BICChargerInverter:
         self.__target_current_A = self.__target_power_W / self.__Vout_V
 
         if max_discharge_current_limit_A < self.__target_current_A < min_charge_current_limit_A:
+            # outside of constant current range, use voltage control
+            if self.__power_control_current_mode:
+                self.__power_control_current_mode = False
+                self.__target_voltage_V = self.__Vout_V
+
+            if self.__target_current_A < 0:
+                self.__target_current_A = max_discharge_current_limit_A
+            else:
+                self.__target_current_A = min_charge_current_limit_A
+
+            self.__target_voltage_V += (self.__Ki * (self.__target_power_W - self.Current_Power_W))
+
+            if self.__target_voltage_V < min_batt_voltage_V:
+                self.__target_voltage_V = min_batt_voltage_V
+            elif self.__target_voltage_V > max_batt_voltage_V:
+                self.__target_voltage_V = max_batt_voltage_V
+        else:
             # within the current control range, use constant current
             self.__power_control_current_mode = True
 
@@ -378,19 +396,6 @@ class BICChargerInverter:
                     self.__target_current_A = min_discharge_current_limit_A
 
                 self.__target_voltage_V = min_batt_voltage_V
-        else:
-            # outside of constant current range, use voltage control
-            if self.__power_control_current_mode:
-                self.__power_control_current_mode = False
-                self.__target_current_A = 0
-                self.__target_voltage_V = self.__Vout_V
-
-            self.__target_voltage_V += (self.__Ki * (self.__target_current_A - self.__Iout_A))
-
-            if self.__target_voltage_V < min_batt_voltage_V:
-                self.__target_voltage_V = min_batt_voltage_V
-            elif self.__target_voltage_V > max_batt_voltage_V:
-                self.__target_voltage_V = max_batt_voltage_V
 
         logger.info(f"Will request charger/inverter for charge current {self.__target_current_A} \
                         with target voltage {self.__target_voltage_V}")
@@ -432,7 +437,7 @@ class BICChargerInverter:
 
             if self.__Vout_V == None or self.__Iout_A == None or self.__Vin_V == None or self.__temperature_C == None:
                 logger.info("Still starting, will not execute")
-
+            else:
                 operation_requested = self.__target_power_W != 0
 
                 # Do not invert when the AC net voltage is too high
@@ -459,6 +464,8 @@ class BICChargerInverter:
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(self.__target_voltage_V / self.__Vout_factor), 2)
                         self.__write_command(BICCommand.REVERSE_IOUT_SET, to_twos_complement((int)(self.__target_current_A / self.__Iout_factor), 16), 2)
                 else:
+                    self.__power_control_current_mode = True
+
                     self.__write_command(BICCommand.IOUT_SET, 0, 2)
                     self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
 
