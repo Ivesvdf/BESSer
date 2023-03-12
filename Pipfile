@@ -9,9 +9,6 @@ paho-mqtt = "*"
 cantools = "*"
 dsmr-parser = "*"
 loguru = "*"
-numpy = "*"
-scikit-fuzzy = "*"
-matplotlib = "*"
 pyyaml = "*"
 
 [dev-packages]

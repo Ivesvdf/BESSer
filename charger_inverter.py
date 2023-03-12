@@ -1,6 +1,6 @@
 import threading
 import time
-from bic2000_current_regulator import FuzzyCurrentRegulator, PIDCurrentRegulator
+from bic2000_current_regulator import PIDCurrentRegulator
 import threadsafe_can
 from loguru import logger
 import enum
@@ -237,9 +237,6 @@ class BICChargerInverter:
         current_mode = 0
         if current_mode == 0:
             self.__current_regulator = PIDCurrentRegulator(**config['charger_inverter']['PID'])
-        elif current_mode == 1:
-            self.__current_regulator = FuzzyCurrentRegulator(voltage_range=(-10,10), 
-                                                             current_range=(self.__reverse_Iout_limits[1], self.__Iout_limits[0]))
 
         self.__communication_thread = threading.Thread(target=self.__run, daemon=True)
         self.__receive_stop_event = threading.Event()
