@@ -30,6 +30,13 @@ class BICCommand(enum.Enum):
     BIDIRECTIONAL_CONFIG = 0x0140
 
 
+class BIC2200Model(enum.Enum):
+    BIC2200_12 = 12
+    BIC2200_24 = 24
+    BIC2200_48 = 48
+    BIC2200_96 = 96
+
+
 class FaultStatusFlag(enum.Enum):
     # Fan locked flag (0 = Fan working normally, 1 = Fan locked)
     FAN_LOCKED = 1 << 0
@@ -119,64 +126,39 @@ def parse_factor(value: int) -> float:
         return None
 
 
-def get_vout_adjustable_range(model_voltage_V):
-    # Define the VOUT_SET portion of the table as a list of dictionaries, one per row
-    vout_table = [
-        {"model": 12, "adjustable range": (10, 15), "tolerance": 0.12, "default": 12},
-        {"model": 24, "adjustable range": (19, 28), "tolerance": 0.24, "default": 24},
-        {"model": 48, "adjustable range": (38, 65), "tolerance": 0.48, "default": 48},
-        {"model": 96, "adjustable range": (76, 112), "tolerance": 0.96, "default": 96},
-    ]
-    # Find the row corresponding to the input model
-    for row in vout_table:
-        if row["model"] == model_voltage_V:
-            return row["adjustable range"]
-    return (0, 0)
+# Define the VOUT_SET portion of the table as a list of dictionaries, one per row
+vout_table = {
+    BIC2200Model.BIC2200_12: {"adjustable range": (10, 15), "tolerance": 0.12, "default": 12},
+    BIC2200Model.BIC2200_24: {"adjustable range": (19, 28), "tolerance": 0.24, "default": 24},
+    BIC2200Model.BIC2200_48: {"adjustable range": (38, 65), "tolerance": 0.48, "default": 48},
+    BIC2200Model.BIC2200_96: {"adjustable range": (76, 112), "tolerance": 0.96, "default": 96}
+}
 
 
-def get_reverse_vout_adjustable_range(model_voltage_V):
-    # Define the REVERSE_VOUT_SET portion of the table as a list of dictionaries, one per row
-    reverse_vout_table = [
-        {"model": 12, "adjustable range": (-15, -10), "tolerance": 0.12, "default": -12},
-        {"model": 24, "adjustable range": (-28, -19), "tolerance": 0.24, "default": -24},
-        {"model": 48, "adjustable range": (-65, -38), "tolerance": 0.48, "default": -48},
-        {"model": 96, "adjustable range": (-112, -76), "tolerance": 0.96, "default": -96},
-    ]
-    # Find the row corresponding to the input model
-    for row in reverse_vout_table:
-        if row["model"] == model_voltage_V:
-            return row["adjustable range"]
-    return (0, 0)
+# Define the REVERSE_VOUT_SET portion of the table as a list of dictionaries, one per row
+reverse_vout_table = {
+    BIC2200Model.BIC2200_12: {"adjustable range": (-15, -10), "tolerance": 0.12, "default": -12},
+    BIC2200Model.BIC2200_24: {"adjustable range": (-28, -19), "tolerance": 0.24, "default": -24},
+    BIC2200Model.BIC2200_48: {"adjustable range": (-65, -38), "tolerance": 0.48, "default": -48},
+    BIC2200Model.BIC2200_96: {"adjustable range": (-112, -76), "tolerance": 0.96, "default": -96}
+}
+
+# Define the VOUT_SET portion of the table as a list of dictionaries, one per row
+iout_table = {
+    BIC2200Model.BIC2200_12: {"adjustable range": (36, 198), "tolerance": 4, "default": 198},
+    BIC2200Model.BIC2200_24: {"adjustable range": (18, 99), "tolerance": 2, "default": 99},
+    BIC2200Model.BIC2200_48: {"adjustable range": (9, 49.5), "tolerance": 1, "default": 49.5},
+    BIC2200Model.BIC2200_96: {"adjustable range": (4.5, 24.75), "tolerance": 0.5, "default": 24.75}
+}
 
 
-def get_iout_adjustable_range(model_voltage_V):
-    # Define the VOUT_SET portion of the table as a list of dictionaries, one per row
-    iout_table = [
-        {"model": 12, "adjustable range": (36, 198), "tolerance": 4, "default": 198},
-        {"model": 24, "adjustable range": (18, 99), "tolerance": 2, "default": 99},
-        {"model": 48, "adjustable range": (9, 49.5), "tolerance": 1, "default": 49.5},
-        {"model": 96, "adjustable range": (4.5, 24.75), "tolerance": 0.5, "default": 24.75},
-    ]
-    # Find the row corresponding to the input model
-    for row in iout_table:
-        if row["model"] == model_voltage_V:
-            return row["adjustable range"]
-    return (0, 0)
-
-
-def get_reverse_iout_adjustable_range(model_voltage_V):
-    # Define the REVERSE_VOUT_SET portion of the table as a list of dictionaries, one per row
-    reverse_iout_table = [
-        {"model": 12, "adjustable range": (-153, -36), "tolerance": 4, "default": -153},
-        {"model": 24, "adjustable range": (-76.5, -18), "tolerance": 2, "default": -76.5},
-        {"model": 48, "adjustable range": (-38.3, -9), "tolerance": 1, "default": -38.3},
-        {"model": 96, "adjustable range": (-19.1, -4.5), "tolerance": 0.5, "default": -19.1},
-    ]
-    # Find the row corresponding to the input model
-    for row in reverse_iout_table:
-        if row["model"] == model_voltage_V:
-            return row["adjustable range"]
-    return (0, 0)
+# Define the REVERSE_VOUT_SET portion of the table as a list of dictionaries, one per row
+reverse_iout_table = {
+    BIC2200Model.BIC2200_12: {"adjustable range": (-153, -36), "tolerance": 4, "default": -153},
+    BIC2200Model.BIC2200_24: {"adjustable range": (-76.5, -18), "tolerance": 2, "default": -76.5},
+    BIC2200Model.BIC2200_48: {"adjustable range": (-38.3, -9), "tolerance": 1, "default": -38.3},
+    BIC2200Model.BIC2200_96: {"adjustable range": (-19.1, -4.5), "tolerance": 0.5, "default": -19.1}
+}
 
 
 def parse_flags(the_enum, value):
@@ -211,7 +193,7 @@ def to_twos_complement(num: int, bits: int) -> int:
 
 
 class BICChargerInverter:
-    def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage: int,
+    def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model: BIC2200Model,
                  battery_voltage_limits_V, Ki: float, disconnect_invert_V: float):
         self.__canbus = can
         self.__canbus.add_receive_hook(self.__on_can_receive)
@@ -224,7 +206,7 @@ class BICChargerInverter:
         self.__command_arb_id = 0x000C0300 | device_id
         self.__receive_broadcast_arb_id = 0x000C03FF
 
-        self.__model_voltage = model_voltage
+        self.__model = model
         self.__battery_voltage_limits = battery_voltage_limits_V
         self.__Ki = Ki
         self.__power_control_current_mode = True
@@ -272,11 +254,11 @@ class BICChargerInverter:
 
     @property
     def Charge_Iout_Limits_A(self):
-        return get_iout_adjustable_range(self.__model_voltage)
+        return iout_table[self.__model]["adjustable range"]
 
     @property
     def Discharge_Iout_Limits_A(self):
-        return get_reverse_iout_adjustable_range(self.__model_voltage)
+        return reverse_iout_table[self.__model]["adjustable range"]
 
     @property
     def Battery_Voltage_Limits_V(self):
