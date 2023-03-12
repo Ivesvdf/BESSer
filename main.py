@@ -18,7 +18,8 @@ charger_inverter = charger_inverter.BICChargerInverter(inverter_can_interface,
                                                        config.charger_inverter_device_id,
                                                        config.charger_inverter_model_voltage,
                                                        (config.battery_min_voltage, config.battery_max_voltage),
-                                                       config.charger_inverter_Ki)
+                                                       config.charger_inverter_Ki,
+                                                       config.charger_inverter_disconnect_invert_V)
 battery = battery.PylontechCANBattery(battery_can_interface)
 
 mqtt_requested_power_W = None
@@ -213,15 +214,6 @@ while True:
     inverter_ac_V = charger_inverter.Vin_V
     inverter_temp_degC = charger_inverter.Temperature_C
     inverter_dc_VA = charger_inverter.Current_Power_W
-
-    # if power_request_W != 0 and -config.min_invert_power_W < power_request_W < config.min_charge_power_W:
-    #    power_request_W = 0
-    #    deviation_reasons.add(DeviationReason.REQUEST_BELOW_MIN_POWER)
-
-    # Do not invert when the AC net voltage is too high
-    # if power_request_W < 0 and inverter_ac_V > config.charger_inverter_disconnect_invert_V:
-    #    power_request_W = 0
-    #    deviation_reasons.add(DeviationReason.GRID_OVER_VOLTAGE)
 
     if charger_inverter_Ki != None:
         charger_inverter.Ki = charger_inverter_Ki

@@ -43,7 +43,8 @@ class FaultStatusFlag(enum.Enum):
     SHORT_CIRCUIT = 1 << 4
     # AC abnormal flag (0 = AC range normal, 1 = AC range abnormal)
     AC_ABNORMAL = 1 << 5
-    DC_TURNED_OFF = 1 << 6  # DC status (0 = DC turned on, 1 = DC turned off)
+    # DC status (0 = DC turned on, 1 = DC turned off)
+    DC_TURNED_OFF = 1 << 6
     # Internal high temperature protection (0 = Internal temperature normal, 1 = Internal temperature abnormal)
     INTERNAL_TEMP_ABNORMAL = 1 << 7
     # HV over voltage protection (0 = HV voltage normal, 1 = HV over voltage protected)
@@ -211,7 +212,7 @@ def to_twos_complement(num: int, bits: int) -> int:
 
 class BICChargerInverter:
     def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage: int,
-                 battery_voltage_limits_V, Ki):
+                 battery_voltage_limits_V, Ki: float, disconnect_invert_V: float):
         self.__canbus = can
         self.__canbus.add_receive_hook(self.__on_can_receive)
 
@@ -226,6 +227,7 @@ class BICChargerInverter:
         self.__model_voltage = model_voltage
         self.__battery_voltage_limits = battery_voltage_limits_V
         self.__Ki = Ki
+        self.__disconnect_invert_V = disconnect_invert_V
 
         self.__last_command_time = 0
         self.__command_interval_s = 0.025
@@ -430,22 +432,29 @@ class BICChargerInverter:
 
             if self.__Vout_V == None or self.__Iout_A == None or self.__Vin_V == None or self.__temperature_C == None:
                 logger.info("Still starting, will not execute")
-            else:
-                if len(self.Fault_Flags) > 0:
-                    operation_requested = 0
-
-                self.__calculate_setpoint()
 
                 operation_requested = self.__target_power_W != 0
+
+                # Do not invert when the AC net voltage is too high
+                if (self.__target_power_W < 0) and (self.__Vin_V > self.__disconnect_invert_V):
+                    self.__fault_flags.add(FaultStatusFlag.AC_ABNORMAL)
+
+                if len(self.__fault_flags) > 0:
+                    operation_requested = 0
+
                 if operation_requested != self.__operational:
                     self.__write_command(BICCommand.OPERATION, 1 if operation_requested else 0, 1)
 
                 if operation_requested:
-                    if self.__target_current_A > 0:  # charge
+                    self.__calculate_setpoint()
+
+                    if self.__target_current_A > 0:
+                        # charge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 0, 1)
                         self.__write_command(BICCommand.VOUT_SET, (int)(self.__target_voltage_V / self.__Vout_factor), 2)
                         self.__write_command(BICCommand.IOUT_SET, (int)(self.__target_current_A / self.__Iout_factor), 2)
-                    else:  # discharge
+                    else:
+                        # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1, 1)
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(self.__target_voltage_V / self.__Vout_factor), 2)
                         self.__write_command(BICCommand.REVERSE_IOUT_SET, to_twos_complement((int)(self.__target_current_A / self.__Iout_factor), 16), 2)
