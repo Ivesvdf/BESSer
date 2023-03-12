@@ -228,6 +228,9 @@ class BICChargerInverter:
         self.__invert_power_limit_W = -1725
         self.__charge_power_limit_W = 2160
 
+        self.__deviation_counter_Ws = 0
+        self.__last_deviation_update_time = time.time()
+
         self.__battery_voltage_limits = (config['battery']['min_voltage_V'], config['battery']['max_voltage_V'])
 
         model_voltage_V = config['charger_inverter']['model_voltage_V']
@@ -369,11 +372,20 @@ class BICChargerInverter:
                 else:
                     self.__write_command(BICCommand.IOUT_SET, 0, 2)
                     self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
+            
+                self._update_deviation()
 
             self.__last_cycle_time_basic_s = time.time() - cycle_time_start
 
             time.sleep(0.1)
 
+    def _update_deviation(self):
+        deviation_W = abs(self.__requested_charge_power_W - self.__Vout_V*self.__Iout_A)
+        now = time.time()
+        deviation_Ws = deviation_W*(now - self.__last_deviation_update_time)
+        self.__deviation_counter_Ws += deviation_Ws
+        self.__last_deviation_update_time = now 
+        
     def get_mqtt_subscriptions(self):
         return [
             ("charger_inverter_PID_Ki", float, self.set_PID_Ki),
@@ -388,6 +400,7 @@ class BICChargerInverter:
             "out": fix_dict(self.__write_state),
             "in": fix_dict(self.__read_state),
             "last_cycle_time": self.get_last_cycle_time_basic_s(),
+            "deviation_counter_Ws": self.__deviation_counter_Ws,
             "PID": {
                 "Ki": self.__current_regulator.Ki,
                 "Kd": self.__current_regulator.Kd,
