@@ -2,10 +2,10 @@ import threading
 import time
 import threadsafe_can
 from loguru import logger
-import enum
+from enum import Enum
 
 
-class BICCommand(enum.Enum):
+class BICCommand(Enum):
     OPERATION = 0x0
     VOUT_SET = 0x20
     IOUT_SET = 0x30
@@ -30,14 +30,24 @@ class BICCommand(enum.Enum):
     BIDIRECTIONAL_CONFIG = 0x0140
 
 
-class BIC2200Model(enum.Enum):
+class BICModel(Enum):
     BIC2200_12 = 12
     BIC2200_24 = 24
     BIC2200_48 = 48
     BIC2200_96 = 96
 
 
-class FaultStatusFlag(enum.Enum):
+class BICFlags(Enum):
+    def parse(self, value):
+        """Receives an integer representing the device status flags and returns a dictionary containing the status of each flag"""
+        flags = set()
+        for flag in self:
+            if value & flag.value:
+                flags.add(flag)
+        return flags
+
+
+class FaultStatusFlag(BICFlags):
     # Fan locked flag (0 = Fan working normally, 1 = Fan locked)
     FAN_LOCKED = 1 << 0
     # Over temperature protection (0 = Internal temperature normal, 1 = Internal temperature abnormal)
@@ -58,7 +68,7 @@ class FaultStatusFlag(enum.Enum):
     HV_OVER_VOLTAGE = 1 << 8
 
 
-class SystemStatusFlags(enum.Enum):
+class SystemStatusFlags(BICFlags):
     # Parallel mode status (0 = Current device is Slave, 1 = Current device is Master)
     PARALLEL_MODE_STATUS = 1 << 0
     # Secondary DD output voltage status (0 = Secondary DD output voltage status TOO LOW, 1 = Secondary DD output voltage status NORMAL)
@@ -78,7 +88,7 @@ class SystemConfig:
     Represents the CANBus communication control status and the pre-set value of
     power on operation command as a class.
     """
-    class CANCtrl(enum.Enum):
+    class CANCtrl(Enum):
         """
         Represents the bit flags for the CANBus communication control status.
         """
@@ -88,7 +98,7 @@ class SystemConfig:
         def __str__(self):
             return self.name
 
-    class OperationInit(enum.Enum):
+    class OperationInit(Enum):
         """
         Represents the pre-set value of power on operation command.
         """
@@ -128,46 +138,37 @@ def parse_factor(value: int) -> float:
 
 # Define the VOUT_SET portion of the table as a list of dictionaries, one per row
 vout_table = {
-    BIC2200Model.BIC2200_12: {"adjustable range": (10, 15), "tolerance": 0.12, "default": 12},
-    BIC2200Model.BIC2200_24: {"adjustable range": (19, 28), "tolerance": 0.24, "default": 24},
-    BIC2200Model.BIC2200_48: {"adjustable range": (38, 65), "tolerance": 0.48, "default": 48},
-    BIC2200Model.BIC2200_96: {"adjustable range": (76, 112), "tolerance": 0.96, "default": 96}
+    BICModel.BIC2200_12: {"adjustable range": (10, 15), "tolerance": 0.12, "default": 12},
+    BICModel.BIC2200_24: {"adjustable range": (19, 28), "tolerance": 0.24, "default": 24},
+    BICModel.BIC2200_48: {"adjustable range": (38, 65), "tolerance": 0.48, "default": 48},
+    BICModel.BIC2200_96: {"adjustable range": (76, 112), "tolerance": 0.96, "default": 96}
 }
 
 
 # Define the REVERSE_VOUT_SET portion of the table as a list of dictionaries, one per row
 reverse_vout_table = {
-    BIC2200Model.BIC2200_12: {"adjustable range": (-15, -10), "tolerance": 0.12, "default": -12},
-    BIC2200Model.BIC2200_24: {"adjustable range": (-28, -19), "tolerance": 0.24, "default": -24},
-    BIC2200Model.BIC2200_48: {"adjustable range": (-65, -38), "tolerance": 0.48, "default": -48},
-    BIC2200Model.BIC2200_96: {"adjustable range": (-112, -76), "tolerance": 0.96, "default": -96}
+    BICModel.BIC2200_12: {"adjustable range": (-15, -10), "tolerance": 0.12, "default": -12},
+    BICModel.BIC2200_24: {"adjustable range": (-28, -19), "tolerance": 0.24, "default": -24},
+    BICModel.BIC2200_48: {"adjustable range": (-65, -38), "tolerance": 0.48, "default": -48},
+    BICModel.BIC2200_96: {"adjustable range": (-112, -76), "tolerance": 0.96, "default": -96}
 }
 
 # Define the VOUT_SET portion of the table as a list of dictionaries, one per row
 iout_table = {
-    BIC2200Model.BIC2200_12: {"adjustable range": (36, 198), "tolerance": 4, "default": 198},
-    BIC2200Model.BIC2200_24: {"adjustable range": (18, 99), "tolerance": 2, "default": 99},
-    BIC2200Model.BIC2200_48: {"adjustable range": (9, 49.5), "tolerance": 1, "default": 49.5},
-    BIC2200Model.BIC2200_96: {"adjustable range": (4.5, 24.75), "tolerance": 0.5, "default": 24.75}
+    BICModel.BIC2200_12: {"adjustable range": (36, 198), "tolerance": 4, "default": 198},
+    BICModel.BIC2200_24: {"adjustable range": (18, 99), "tolerance": 2, "default": 99},
+    BICModel.BIC2200_48: {"adjustable range": (9, 49.5), "tolerance": 1, "default": 49.5},
+    BICModel.BIC2200_96: {"adjustable range": (4.5, 24.75), "tolerance": 0.5, "default": 24.75}
 }
 
 
 # Define the REVERSE_VOUT_SET portion of the table as a list of dictionaries, one per row
 reverse_iout_table = {
-    BIC2200Model.BIC2200_12: {"adjustable range": (-153, -36), "tolerance": 4, "default": -153},
-    BIC2200Model.BIC2200_24: {"adjustable range": (-76.5, -18), "tolerance": 2, "default": -76.5},
-    BIC2200Model.BIC2200_48: {"adjustable range": (-38.3, -9), "tolerance": 1, "default": -38.3},
-    BIC2200Model.BIC2200_96: {"adjustable range": (-19.1, -4.5), "tolerance": 0.5, "default": -19.1}
+    BICModel.BIC2200_12: {"adjustable range": (-153, -36), "tolerance": 4, "default": -153},
+    BICModel.BIC2200_24: {"adjustable range": (-76.5, -18), "tolerance": 2, "default": -76.5},
+    BICModel.BIC2200_48: {"adjustable range": (-38.3, -9), "tolerance": 1, "default": -38.3},
+    BICModel.BIC2200_96: {"adjustable range": (-19.1, -4.5), "tolerance": 0.5, "default": -19.1}
 }
-
-
-def parse_flags(the_enum, value):
-    """Receives an integer representing the device status flags and returns a dictionary containing the status of each flag"""
-    flags = set()
-    for flag in the_enum:
-        if value & flag.value:
-            flags.add(flag)
-    return flags
 
 
 def from_twos_complement(num: int, bits: int) -> int:
@@ -193,7 +194,7 @@ def to_twos_complement(num: int, bits: int) -> int:
 
 
 class BICChargerInverter:
-    def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model: BIC2200Model,
+    def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model: BICModel,
                  battery_voltage_limits_V, Ki: float, disconnect_invert_V: float):
         self.__canbus = can
         self.__canbus.add_receive_hook(self.__on_can_receive)
@@ -479,9 +480,9 @@ class BICChargerInverter:
     def __on_response_received(self, command: BICCommand, data: int):
         self.__read_state[command] = data
         if command == BICCommand.FAULT_STATUS:
-            self.__fault_flags = parse_flags(FaultStatusFlag, data)
+            self.__fault_flags = FaultStatusFlag.parse(data)
         elif command == BICCommand.SYSTEM_STATUS:
-            self.__system_status = parse_flags(SystemStatusFlags, data)
+            self.__system_status = SystemStatusFlags.parse(data)
         elif command == BICCommand.SYSTEM_CONFIG:
             self.__can_control = (data & 1) != 0
         elif command == BICCommand.SCALING_FACTOR:
