@@ -1,51 +1,31 @@
 import enum
+import sys
 import time
+import yaml
 
 import battery
 import charger_inverter
-import config_validator
-import config
 import mqtt_interface
-import threadsafe_can
-from battery import AlarmFlags, ProtectionFlags, RequestFlags
+from battery import ProtectionFlags, RequestFlags
+from loguru import logger
 
-battery_can_interface = threadsafe_can.ThreadSafeCanInterface(config.battery_canbus)
-inverter_can_interface = threadsafe_can.ThreadSafeCanInterface(config.charger_inverter_canbus)
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-mqtt = mqtt_interface.MqttInterface(config.mqtt_connect_args, config.mqtt_credentials, config.mqtt_topic_prefix)
+# Patch up the dict passed to loguru
+if "logger" in config and 'config' in config['logger']:
+    for handler in config['logger']['config']['handlers']:
+        for k,v in handler.items():
+            if v == "sys.stdout": 
+                handler[k] = sys.stdout 
+            if v == "sys.stderr": 
+                handler[k] = sys.stderr 
+    logger.configure(**config['logger']['config'])
 
-charger_inverter = charger_inverter.BICChargerInverter(inverter_can_interface, 
-                                                       config.charger_inverter_device_id, 
-                                                       config.charger_inverter_model_voltage, 
-                                                       (config.battery_min_voltage, config.battery_max_voltage),
-                                                       config.charger_inverter_PID_Ki, 
-                                                       config.charger_inverter_PID_Kp, 
-                                                       config.charger_inverter_PID_Kd,
-                                                       config.charger_inverter_PID_Ki_min,
-                                                       config.charger_inverter_PID_Ki_max)
-battery = battery.PylontechCANBattery(battery_can_interface)
-
-mqtt_requested_power_W = None
-battery_requested_power_W = None 
 min_soc_override = None
 max_soc_override = None
-
-charger_inverter_Ki = None
-charger_inverter_Kp = None
-charger_inverter_Kd = None 
-
-def on_mqtt_power_request(power_W):
-    global mqtt_requested_power_W
-    mqtt_requested_power_W = power_W 
-
-def on_configure_bic_request():
-    global charger_inverter
-    charger_inverter.configure_bic()
-
+mqtt_requested_power_W = None
 last_heartbeat_timestamp = 0
-def on_hearbeat():
-    global last_heartbeat_timestamp
-    last_heartbeat_timestamp = time.time()
 
 def on_min_soc(soc):
     global min_soc_override
@@ -55,25 +35,30 @@ def on_max_soc(soc):
     global max_soc_override
     max_soc_override = soc
 
-def on_Ki(val):
-    global charger_inverter_Ki
-    charger_inverter_Ki = val
+def on_mqtt_power_request(power_W):
+    global mqtt_requested_power_W
+    global last_heartbeat_timestamp
+    last_heartbeat_timestamp = time.time()
+    mqtt_requested_power_W = power_W 
 
-def on_Kp(val):
-    global charger_inverter_Kp
-    charger_inverter_Kp = val
+battery = battery.PylontechCANBattery(dict(config))
+charger_inverter = charger_inverter.BICChargerInverter(dict(config))
+mqtt = mqtt_interface.MqttInterface(dict(config))
+mqtt.add_subscriptions(charger_inverter.get_mqtt_subscriptions())
+mqtt.add_subscriptions([
+    ("min_soc", lambda x: int(float(x)), on_min_soc),
+    ("max_soc", lambda x: int(float(x)), on_max_soc),
+    ("charge_discharge_request", lambda x: int(float(x)), on_mqtt_power_request)
+])
+mqtt.connect()
 
-def on_Kd(val):
-    global charger_inverter_Kd
-    charger_inverter_Kd = val
+if "battery_simulator" in config:
+    import battery_simulator
+    battery_simulator.start(config)
 
-mqtt.on_power_request = on_mqtt_power_request
-mqtt.on_heartbeat = on_hearbeat
-mqtt.on_min_soc = on_min_soc
-mqtt.on_max_soc = on_max_soc
-mqtt.on_Ki = on_Ki
-mqtt.on_Kp = on_Kp
-mqtt.on_Kd = on_Kd
+if "charger_inverter_simulator" in config:
+    import charger_inverter_simulator
+    charger_inverter_simulator.start(config)
 
 class DeviationReason(enum.Enum):
     CHARGE_ENABLE_NOT_SET = enum.auto()
@@ -99,6 +84,20 @@ last_broadcast_power_request_W = None
 last_status = None
 last_debug_info = None
 
+batt_config = config.get('battery', dict())
+charger_inverter_config = config.get('charger_inverter', dict())
+mqtt_config = config.get('mqtt', dict())
+
+max_soc_charge_pct = batt_config.get('max_soc_charge_pct', 100)
+min_soc_charge_pct = batt_config.get('min_soc_charge_pct', 0)
+battery_min_voltage_V = batt_config['min_voltage_V']
+battery_max_voltage_V = batt_config['max_voltage_V']
+min_invert_power_W = charger_inverter_config.get('min_invert_power_W', 0)
+min_charge_power_W = charger_inverter_config.get('min_charge_power_W', 0)
+charger_inverter_disconnect_invert_V = charger_inverter_config.get('disconnect_invert_V')
+mqtt_status_broadcast_interval_s = mqtt_config.get("status_broadcast_interval_s", 10)
+mqtt_heartbeat_interval_s = mqtt_config.get('heartbeat_interval_s', 0)
+
 while True:
     protection_flags = battery.get_protection_flags() or set()
     alarm_flags = battery.get_alarm_flags() or set()
@@ -107,13 +106,13 @@ while True:
     deviation_reasons = set()
     
     # Max soc can only be decreased through MQTT, min soc only increased. 
-    soc_max = min(config.battery_max_soc_charge, max_soc_override or 100)
-    soc_min = max(config.battery_min_soc_discharge, min_soc_override or 0)
+    soc_max = min(max_soc_charge_pct, max_soc_override or 100)
+    soc_min = max(min_soc_charge_pct, min_soc_override or 0)
 
     power_request_W = mqtt_requested_power_W or 0
 
-    time_since_last_heartbeat_s = (config.mqtt_heartbeat_interval_s != 0 and time.time() - last_heartbeat_timestamp)
-    if power_request_W != 0 and time_since_last_heartbeat_s > config.mqtt_heartbeat_interval_s:
+    time_since_last_heartbeat_s = (mqtt_heartbeat_interval_s != 0 and time.time() - last_heartbeat_timestamp)
+    if power_request_W != 0 and time_since_last_heartbeat_s > mqtt_heartbeat_interval_s:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_MQTT_HEARTBEAT)
 
@@ -182,7 +181,7 @@ while True:
     oldest_battery_receive_time_age = time.time() - oldest_receive_time
 
     batt_max_charge_W = (batt_V or 0) * (batt_charge_A or 0)
-    batt_max_discharge_W = (batt_V or 0)*(batt_discharge_A or 0)
+    batt_max_discharge_W = (batt_V or 0) * (batt_discharge_A or 0)
 
     # Limit charge and discharge due to battery limits
     if power_request_W > batt_max_charge_W:
@@ -193,7 +192,7 @@ while True:
         deviation_reasons.add(DeviationReason.BATTERY_CURRENT_LIMIT)
 
     # If the mqtt heartbeat interval is set, do not charge or discharge if it hasn't been received
-    if config.mqtt_heartbeat_interval_s != 0 and oldest_battery_receive_time_age > config.mqtt_heartbeat_interval_s:
+    if mqtt_heartbeat_interval_s != 0 and oldest_battery_receive_time_age > mqtt_heartbeat_interval_s:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.NO_DATA_FROM_BATTERY)
 
@@ -218,30 +217,18 @@ while True:
     inverter_ac_V = charger_inverter.get_Vin_V()
     inverter_temp_degC = charger_inverter.get_temperature_1()
 
-    if power_request_W != 0 and -config.min_invert_power_W < power_request_W < config.min_charge_power_W:
+    if power_request_W != 0 and -min_invert_power_W < power_request_W < min_charge_power_W:
         power_request_W = 0
         deviation_reasons.add(DeviationReason.REQUEST_BELOW_MIN_POWER)
 
     # Do not invert when the AC net voltage is too high
-    if power_request_W < 0 and inverter_ac_V > config.charger_inverter_disconnect_invert_V: 
+    if power_request_W < 0 and inverter_ac_V >  charger_inverter_disconnect_invert_V: 
         power_request_W = 0
         deviation_reasons.add(DeviationReason.GRID_OVER_VOLTAGE)
 
-    if charger_inverter_Ki != None:
-        charger_inverter.set_PID_Ki(charger_inverter_Ki)
-        charger_inverter_Ki = None 
-
-    if charger_inverter_Kp != None:
-        charger_inverter.set_PID_Kp(charger_inverter_Kp)
-        charger_inverter_Kp = None 
-
-    if charger_inverter_Kd != None:
-        charger_inverter.set_PID_Kd(charger_inverter_Kd)
-        charger_inverter_Kd = None
-
-    charger_inverter.set_battery_voltage_limits((batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))
+    charger_inverter.set_battery_voltage_limits(
+        (batt_discharge_V or battery_min_voltage_V, batt_charge_V or battery_max_voltage_V))
     charger_inverter.request_charge_discharge(power_request_W)
-
 
     status = {
         "batt_V": batt_V,
@@ -269,29 +256,20 @@ while True:
         'inverter_system_status': charger_inverter.get_system_status(),
     }
 
-
-    def fix_dict(d):
-        return { str(k): v for k,v in d.items() } 
-    debug_info = { "inverter" : { 
-                "out" : fix_dict(charger_inverter.get_write_state()),
-                "in": fix_dict(charger_inverter.get_read_state()),
-                "last_cycle_time": charger_inverter.get_last_cycle_time_basic_s(),
-                "pid": charger_inverter.get_pid_state(),
-             }}
-
+    debug_info = { "inverter": charger_inverter.get_debug_info() }
 
     now = time.time()
 
-    if (now - last_broadcast_time > config.mqtt_status_broadcast_interval_s) or (last_status != status) or (last_debug_info != debug_info): 
+    if (now - last_broadcast_time > mqtt_status_broadcast_interval_s) or \
+            (last_status != status) or \
+            (last_debug_info != debug_info): 
         last_broadcast_time = now
         last_status = status
         last_debug_info = debug_info
         mqtt.broadcast_status(status)
         mqtt.broadcast_debug(debug_info)
 
-
     time.sleep(1)
-
 
 # Stop the network loop
 client.loop_stop()

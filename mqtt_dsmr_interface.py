@@ -52,7 +52,7 @@ class MqttBroadcaster:
         logger.info(f"Message published with ID {mid}: {userdata}")
 
     def on_message(self, client, userdata, msg):
-        logger.info(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
+        logger.debug(f"Received message on topic {msg.topic}: {msg.payload.decode()}")
 
     def broadcast(self, message):
         d = {} 

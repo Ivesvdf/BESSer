@@ -1,8 +1,10 @@
 import threading
 import time
+from bic2000_current_regulator import FuzzyCurrentRegulator, PIDCurrentRegulator
 import threadsafe_can
 from loguru import logger
 import enum
+
 
 class BICCommand(enum.Enum):
     OPERATION = 0x0
@@ -183,50 +185,12 @@ def to_twos_complement(num: int, bits: int) -> int:
         max_val = 1 << bits
         return max_val + num
 
-class CurrentRegulator:
-    def __init__(self, Kp, Ki, Kd, Ki_min, Ki_max):
-        # Define the PID gains
-        self.Kp = Kp
-        self.Ki = Ki
-        self.Kd = Kd
-
-        self.Ki_min = Ki_min
-        self.Ki_max = Ki_max
-
-        # Define the variables
-        self._last_error = 0
-        self._integral = 0
-
-
-    def regulate_current(self, setpoint_current_A, measured_current_A):
-        # Calculate the error
-        error = setpoint_current_A - measured_current_A
-
-        # Calculate the integral
-        self._integral = self._integral + error
-
-        if self._integral > self.Ki_max:
-            self._integral = self.Ki_max
-        elif self._integral < self.Ki_min:
-            self._integral = self.Ki_min
-
-        # Calculate the derivative
-        derivative = error - self._last_error
-
-        # Calculate the output voltage
-        output_voltage = self.Kp * error + self.Ki * self._integral + self.Kd * derivative
-
-        # Save the last error
-        self._last_error = error
-
-        return output_voltage
-
 class BICChargerInverter:
-    def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage:int, battery_voltage_limits_V, 
-                 PID_Ki, PID_Kp, PID_Kd, PID_Ki_min, PID_Ki_max):
-        self.__canbus = can
+    def __init__(self, config):
+        self.__canbus = threadsafe_can.ThreadSafeCanInterface(threadsafe_can.Bus(**config.get("charger_inverter",dict()).get("canbus")))
         self.__canbus.add_receive_hook(self.__on_can_receive)
 
+        device_id = config['charger_inverter']['device_id']
         if device_id > 7 or device_id < 0:
             logger.error("Invalid device id, device id should range from 0 to 7")
             device_id = 0
@@ -255,8 +219,7 @@ class BICChargerInverter:
         self.__fault_flags = set()
         self.__system_status = set()
 
-        self.__current_regulator = CurrentRegulator(Kp=PID_Kp, Ki=PID_Ki, Kd=PID_Kd, Ki_min=PID_Ki_min, Ki_max=PID_Ki_max)
-        self.__cycle_time_basic_s = 0
+        self.__last_cycle_time_basic_s = 0
 
         self.__operational = False 
         self.__requested_charge_power_W = 0
@@ -265,17 +228,25 @@ class BICChargerInverter:
         self.__invert_power_limit_W = -1725
         self.__charge_power_limit_W = 2160
 
-        self.__battery_voltage_limits = battery_voltage_limits_V
+        self.__battery_voltage_limits = (config['battery']['min_voltage_V'], config['battery']['max_voltage_V'])
 
-        self.__Iout_limits = get_iout_adjustable_range(model_voltage)
-        self.__reverse_Iout_limits = get_reverse_iout_adjustable_range(model_voltage)
+        model_voltage_V = config['charger_inverter']['model_voltage_V']
+        self.__Iout_limits = get_iout_adjustable_range(model_voltage_V)
+        self.__reverse_Iout_limits = get_reverse_iout_adjustable_range(model_voltage_V)
+
+        current_mode = 0
+        if current_mode == 0:
+            self.__current_regulator = PIDCurrentRegulator(**config['charger_inverter']['PID'])
+        elif current_mode == 1:
+            self.__current_regulator = FuzzyCurrentRegulator(voltage_range=(-10,10), 
+                                                             current_range=(self.__reverse_Iout_limits[1], self.__Iout_limits[0]))
 
         self.__communication_thread = threading.Thread(target=self.__run, daemon=True)
         self.__receive_stop_event = threading.Event()
         self.__communication_thread.start()
 
     def get_last_cycle_time_basic_s(self):
-        return self.__cycle_time_basic_s
+        return self.__last_cycle_time_basic_s
     
     def get_charge_power_limit_W(self):
         return self.__charge_power_limit_W
@@ -402,23 +373,31 @@ class BICChargerInverter:
                     self.__write_command(BICCommand.IOUT_SET, 0, 2)
                     self.__write_command(BICCommand.REVERSE_IOUT_SET, 0, 2)
 
-            self.__cycle_time_basic_s = time.time() - cycle_time_start
+            self.__last_cycle_time_basic_s = time.time() - cycle_time_start
 
             time.sleep(0.1)
 
-    def get_write_state(self):
-        return dict(self.__write_state)
+    def get_mqtt_subscriptions(self):
+        return [
+            ("charger_inverter_PID_Ki", float, self.set_PID_Ki),
+            ("charger_inverter_PID_Kp", float, self.set_PID_Kp),
+            ("charger_inverter_PID_Kd", float, self.set_PID_Kd),
+        ]
     
-    def get_read_state(self):
-        return dict(self.__read_state)
-    
-    def get_pid_state(self):
-        return { 
-            "Ki": self.__current_regulator.Ki,
-            "Kd": self.__current_regulator.Kd,
-            "Kp": self.__current_regulator.Kp,
-            "integral": self.__current_regulator._integral 
-            } 
+    def get_debug_info(self):
+        def fix_dict(d):
+            return {str(k): v for k, v in d.items()}
+        return {
+            "out": fix_dict(self.__write_state),
+            "in": fix_dict(self.__read_state),
+            "last_cycle_time": self.get_last_cycle_time_basic_s(),
+            "PID": {
+                "Ki": self.__current_regulator.Ki,
+                "Kd": self.__current_regulator.Kd,
+                "Kp": self.__current_regulator.Kp,
+                "integral": self.__current_regulator._integral
+            }
+        }
     
     def request_until_okay(self, command, exit_condition):
         last_scale_request_time = 0

@@ -1,0 +1,94 @@
+logger:
+  config: 
+    handlers:
+      - sink: sys.stdout
+        level: INFO
+      - sink: log.txt
+        level: DEBUG
+        rotation: 50MB
+
+mqtt:
+  connection: 
+    host: broker.hivemq.com
+    port: 1883
+    keepalive: 60
+  # credentials: 
+  #   username: "my-username"
+  #   password: "my-password"
+
+  # Prefix used for MQTT topics
+  topic_prefix: homebattery1
+
+  # If no data changes, broadcast a status message every x seconds  
+  status_broadcast_interval_s: 10
+
+  # interval at which the requested power is reset to 0 if no heartbeat is received. When set to 0 this is infinitely long
+  heartbeat_interval_s: 80
+
+battery:
+  # examples:
+  #   interface='socketcan', channel='vcan0', bitrate=250000
+  #   interface='pcan', channel='PCAN_USBBUS1', bitrate=250000
+  #   interface='ixxat', channel=0, bitrate=250000
+  #   interface='vector', app_name='CANalyzer', channel=0, bitrate=250000
+  # ...
+  canbus:
+    interface: virtual
+    channel: battery
+    bitrate: 500000
+  max_charge_power_W: 2000
+  max_discharge_power_W: 2100
+
+  # Max state of charge below which the battery can be charged, can be lowered through MQTT
+  max_soc_charge_pct: 98
+
+  # Min state of charge above which the battery can be discharged, can be increased through MQTT or when the battery requires it.
+  min_soc_discharge_pct: 15
+
+  # Min voltage below which we will not allow discharge
+  min_voltage_V: 44
+
+  # Max voltage above which we will not allow charge
+  max_voltage_V: 53
+
+charger_inverter:
+  # examples:
+  #   interface='socketcan', channel='vcan0', bitrate=250000
+  #   interface='pcan', channel='PCAN_USBBUS1', bitrate=250000
+  #   interface='ixxat', channel=0, bitrate=250000
+  #   interface='vector', app_name='CANalyzer', channel=0, bitrate=250000
+  # ...
+  canbus:
+    interface: virtual
+    channel: inverter
+    bitrate: 250000
+
+  # Id as set physically on the inverter, default 0 
+  device_id: 0
+
+  # Manufacturer voltage rating as in the model 
+  model_voltage_V: 48
+
+  # Voltage above which the inverter will stop inverting to prevent overvoltage on the grid.
+  # The correct setting for this depends on your physical location.
+  disconnect_invert_V: 253
+  
+  # Voltage-control PID parameters
+  PID:
+    Ki: 0.01
+    Kp: 0.01
+    Kd: 0.00001
+    Ki_max: 150.0
+    Ki_min: -150.0
+
+# Power below which we don't charge, because we consider the efficiency too low
+min_charge_power_W: 50
+
+# Power below which we don't invert, because we consider the efficiency too low
+min_invert_power_W: 100
+
+# If you want to run a battery simulator, uncomment the following line
+#battery_simulator:
+
+# If you want to run a charger inverter simulator, uncomment the following line
+#charger_inverter_simulator:

@@ -1,5 +1,6 @@
 from charger_inverter import BICCommand, to_twos_complement, from_twos_complement
-import threadsafe_can as can 
+import threadsafe_can as can
+import threading
 
 class BICSimulator:
     def __init__(self, bus):
@@ -102,3 +103,10 @@ class BICSimulator:
                                     ]
                 response_msg = can.Message(arbitration_id=self.__read_arb_id, data=response_data, is_extended_id=True)
                 self.__bus.send(response_msg)
+    
+def start(config):
+    def run_inverter_simulator():
+        BICSim = BICSimulator(can.Bus(**config["charger_inverter"]["canbus"]))
+        BICSim.simulate()
+
+    threading.Thread(target=run_inverter_simulator, daemon=True).start()

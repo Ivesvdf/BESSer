@@ -20,7 +20,7 @@ Due to a can speed mismatch two can busses are required by default, as the pylon
 
 Installation
 ------------
-First copy over ```config.py.example``` to ```config.py```. Edit it to be in accordance with your configuration.
+First copy over ```config.example.yaml``` to ```config.yaml```. Edit it to be in accordance with your configuration.
 
 Then execute 
 

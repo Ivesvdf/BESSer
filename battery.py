@@ -35,7 +35,7 @@ class RepeatTimer(threading.Timer):
             self.function(*self.args, **self.kwargs)
 
 class PylontechCANBattery:
-    def __init__(self, canbus: threadsafe_can.ThreadSafeCanInterface):
+    def __init__(self, config):
         self.__batt_V = None
         self.__batt_A = None
         self.__batt_T = None
@@ -57,7 +57,7 @@ class PylontechCANBattery:
         self._core_ids = [ 0x351, 0x355, 0x359, 0x35c, 0x35e ]
         self._last_receive_time = { x: 0 for x in self._core_ids }
 
-        self.__canbus = canbus
+        self.__canbus = threadsafe_can.ThreadSafeCanInterface(threadsafe_can.Bus(**config.get("battery")['canbus']))
         self.__canbus.add_receive_hook(self.process_can)
 
         RepeatTimer(interval=1, function=self.send_heartbeat).start()
