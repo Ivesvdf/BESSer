@@ -18,9 +18,7 @@ charger_inverter = charger_inverter.BICChargerInverter(inverter_can_interface,
                                                        config.charger_inverter_device_id,
                                                        config.charger_inverter_model_voltage,
                                                        (config.battery_min_voltage, config.battery_max_voltage),
-                                                       config.charger_inverter_PID_Ki,
-                                                       config.charger_inverter_PID_Ki_min,
-                                                       config.charger_inverter_PID_Ki_max)
+                                                       config.charger_inverter_Ki)
 battery = battery.PylontechCANBattery(battery_can_interface)
 
 mqtt_requested_power_W = None
@@ -28,7 +26,6 @@ battery_requested_power_W = None
 min_soc_override = None
 max_soc_override = None
 
-charger_inverter_Kp = None
 charger_inverter_Ki = None
 
 
@@ -60,11 +57,6 @@ def on_max_soc(soc):
     max_soc_override = soc
 
 
-def on_Kp(val):
-    global charger_inverter_Kp
-    charger_inverter_Kp = val
-
-
 def on_Ki(val):
     global charger_inverter_Ki
     charger_inverter_Ki = val
@@ -74,7 +66,6 @@ mqtt.on_power_request = on_mqtt_power_request
 mqtt.on_heartbeat = on_hearbeat
 mqtt.on_min_soc = on_min_soc
 mqtt.on_max_soc = on_max_soc
-mqtt.on_Kp = on_Kp
 mqtt.on_Ki = on_Ki
 
 
@@ -234,10 +225,6 @@ while True:
     if charger_inverter_Ki != None:
         charger_inverter.set_PID_Ki(charger_inverter_Ki)
         charger_inverter_Ki = None
-
-    if charger_inverter_Kp != None:
-        charger_inverter.set_PID_Kp(charger_inverter_Kp)
-        charger_inverter_Kp = None
 
     charger_inverter.set_battery_voltage_limits(
         (batt_discharge_V or config.battery_min_voltage, batt_charge_V or config.battery_max_voltage))

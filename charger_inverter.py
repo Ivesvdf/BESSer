@@ -209,41 +209,9 @@ def to_twos_complement(num: int, bits: int) -> int:
         return max_val + num
 
 
-class CurrentRegulator:
-    def __init__(self, Ki, Ki_min, Ki_max):
-        # Define the PID gains
-        self.Ki = Ki
-        self.Ki_min = Ki_min
-        self.Ki_max = Ki_max
-
-        # Define the variables
-        self._last_error = 0
-        self._integral = 0
-
-    def regulate_current(self, setpoint_current_A, measured_current_A):
-        # Calculate the error
-        error = setpoint_current_A - measured_current_A
-
-        # Calculate the integral
-        self._integral = self._integral + error
-
-        if self._integral > self.Ki_max:
-            self._integral = self.Ki_max
-        elif self._integral < self.Ki_min:
-            self._integral = self.Ki_min
-
-        # Calculate the output voltage
-        output_voltage = self.Ki * self._integral
-
-        # Save the last error
-        self._last_error = error
-
-        return output_voltage
-
-
 class BICChargerInverter:
     def __init__(self, can: threadsafe_can.ThreadSafeCanInterface, device_id: int, model_voltage: int,
-                 battery_voltage_limits_V, PID_Ki, PID_Ki_min, PID_Ki_max):
+                 battery_voltage_limits_V, Ki):
         self.__canbus = can
         self.__canbus.add_receive_hook(self.__on_can_receive)
 
@@ -274,7 +242,10 @@ class BICChargerInverter:
         self.__fault_flags = set()
         self.__system_status = set()
 
-        self.__current_regulator = CurrentRegulator(Ki=PID_Ki, Ki_min=PID_Ki_min, Ki_max=PID_Ki_max)
+        # Define the PID gains
+        self.__Ki = Ki
+        self.__integral = 0
+
         self.__cycle_time_basic_s = 0
 
         self.__operational = False
@@ -326,33 +297,40 @@ class BICChargerInverter:
     def get_system_status(self):
         return set(self.__system_status)
 
-    def _calculate_setpoint(self, target_current_A):
+    def _calculate_setpoint(self, target_power_W):
+        target_current_A = target_power_W / self.__Vout_V
+
         (min_batt_voltage_V, max_batt_voltage_V) = self.__battery_voltage_limits
 
         if target_current_A > 0:
             # charge
             lower_limit_A, upper_limit_A = self.__Iout_limits
-            extreme_voltage_V = max_batt_voltage_V
+            target_voltage_V = max_batt_voltage_V
         else:
             # discharge
             lower_limit_A, upper_limit_A = self.__reverse_Iout_limits
-            extreme_voltage_V = min_batt_voltage_V
+            target_voltage_V = min_batt_voltage_V
 
         if lower_limit_A <= target_current_A <= upper_limit_A:
             # within the current control range, use constant current
-            return target_current_A, extreme_voltage_V
+            self.__power_control_current_mode = True
+            return target_current_A, target_voltage_V
         else:
             # outside of constant current range, use voltage control
-            target_V = self.__Vout_V + self.__current_regulator.regulate_current(target_current_A, self.__Iout_A)
-            target_A = 0
+            if self.__power_control_current_mode:
+                self.__integral = self.__Vout_V
 
-            # Respect limits
-            if target_V > max_batt_voltage_V:
-                target_V = max_batt_voltage_V
-            elif target_V < min_batt_voltage_V:
-                target_V = min_batt_voltage_V
+            self.__power_control_current_mode = False
 
-            return target_A, target_V
+            # Calculate the integral
+            self.__integral = self.__integral + (self.__Ki * (target_current_A - self.__Iout_A))
+
+            if self.__integral < min_batt_voltage_V:
+                self.__integral = min_batt_voltage_V
+            elif self.__integral > max_batt_voltage_V:
+                self.__integral = max_batt_voltage_V
+
+            return 0, self.__integral
 
     def __run(self):
         logger.info("Waiting for scaling factors")
@@ -395,9 +373,7 @@ class BICChargerInverter:
                 if len(self.__fault_flags) > 0:
                     operation_requested = 0
 
-                self.__requested_current_A = self.__requested_charge_power_W / self.__Vout_V
-
-                (instructed_current_A, target_voltage_V) = self._calculate_setpoint(self.__requested_current_A)
+                (instructed_current_A, target_voltage_V) = self._calculate_setpoint(self.__requested_charge_power_W)
 
                 logger.info(
                     f"Will request charger/inverter for charge current {instructed_current_A} \
@@ -434,8 +410,8 @@ class BICChargerInverter:
 
     def get_pid_state(self):
         return {
-            "Ki": self.__current_regulator.Ki,
-            "integral": self.__current_regulator._integral
+            "Ki": self.__Ki,
+            "integral": self.__integral
         }
 
     def request_until_okay(self, command, exit_condition):
