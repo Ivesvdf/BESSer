@@ -30,18 +30,11 @@ class BICCommand(Enum):
     BIDIRECTIONAL_CONFIG = 0x0140
 
 
-class BICModel(Enum):
-    BIC2200_12 = 12
-    BIC2200_24 = 24
-    BIC2200_48 = 48
-    BIC2200_96 = 96
-
-
 class BICFlags(Enum):
-    def parse(self, value):
+    def parse(value):
         """Receives an integer representing the device status flags and returns a dictionary containing the status of each flag"""
         flags = set()
-        for flag in self:
+        for flag in BICFlags:
             if value & flag.value:
                 flags.add(flag)
         return flags
@@ -135,6 +128,11 @@ def parse_factor(value: int) -> float:
     else:
         return None
 
+class BICModel(Enum):
+    BIC2200_12 = 12
+    BIC2200_24 = 24
+    BIC2200_48 = 48
+    BIC2200_96 = 96
 
 # Define the VOUT_SET portion of the table as a list of dictionaries, one per row
 vout_table = {
@@ -341,8 +339,8 @@ class BICChargerInverter:
 
     def __calculate_setpoint(self):
         (min_batt_voltage_V, max_batt_voltage_V) = self.__battery_voltage_limits
-        (min_charge_current_limit_A, max_charge_current_limit_A) = self.Charge_Iout_Limits_A
-        (min_discharge_current_limit_A, max_discharge_current_limit_A) = self.Discharge_Iout_Limits_A
+        (min_charge_current_limit_A, max_charge_current_limit_A) = iout_table[BICModel.BIC2200_48]["adjustable range"]
+        (min_discharge_current_limit_A, max_discharge_current_limit_A) = reverse_iout_table[BICModel.BIC2200_48]["adjustable range"]
 
         self.__target_current_A = self.__target_power_W / self.__Vout_V
 
@@ -445,7 +443,7 @@ class BICChargerInverter:
                         # discharge
                         self.__write_command(BICCommand.DIRECTION_CTRL, 1, 1)
                         self.__write_command(BICCommand.REVERSE_VOUT_SET, (int)(self.__target_voltage_V / self.__Vout_factor), 2)
-                        self.__write_command(BICCommand.REVERSE_IOUT_SET, to_twos_complement((int)(self.__target_current_A / self.__Iout_factor), 16), 2)
+                        self.__write_command(BICCommand.REVERSE_IOUT_SET, (int)(abs(self.__target_current_A) / self.__Iout_factor), 2)
                 else:
                     self.__power_control_current_mode = True
 
